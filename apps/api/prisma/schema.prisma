@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Users ──────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String   // bcrypt hash
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  nations   Nation[]
+}
+
+// ─── Rounds ─────────────────────────────────────────────
+
+model Round {
+  id           String       @id @default(cuid())
+  number       Int          @unique
+  startedAt    DateTime
+  endsAt       DateTime
+  phase        RoundPhase   @default(GROWTH)
+  active       Boolean      @default(true)
+  nations      Nation[]
+  marketOrders MarketOrder[]
+  createdAt    DateTime     @default(now())
+}
+
+enum RoundPhase {
+  GROWTH
+  OPEN
+  ENDGAME
+  ENDED
+}
+
+enum ServerMode {
+  HARDCORE
+  CASUAL
+  PVE
+}
+
+// ─── Nations ────────────────────────────────────────────
+
+model Nation {
+  id         String     @id @default(cuid())
+  name       String
+  userId     String
+  user       User       @relation(fields: [userId], references: [id])
+  roundId    String
+  round      Round      @relation(fields: [roundId], references: [id])
+  serverMode ServerMode @default(CASUAL)
+
+  // Resources
+  cash        Float @default(1000)
+  materials   Float @default(500)
+  techPoints  Float @default(0)
+  energy      Float @default(100)
+  energyCap   Float @default(100)
+  energyRegen Float @default(2)
+  population  Int   @default(1000)
+  civilians   Int   @default(800)
+  military    Int   @default(200)
+  food        Float @default(500)
+
+  // Combat stats
+  lastAttackedAt DateTime?
+  shieldUntil    DateTime?
+  dailyMilLoss   Float     @default(0)
+  dailyTerLoss   Float     @default(0)
+  dailyResLoss   Float     @default(0)
+
+  buildings       Building[]
+  troops          Troop[]
+  techNodes       TechResearch[]
+  sentOps         CyberOp[]     @relation("attacker")
+  receivedOps     CyberOp[]     @relation("defender")
+  sentAttacks     Attack[]      @relation("attackerNation")
+  receivedAttacks Attack[]      @relation("defenderNation")
+  buyOrders       MarketOrder[] @relation("buyer")
+  sellOrders      MarketOrder[] @relation("seller")
+
+  allianceMembership AllianceMember?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, roundId])
+}
+
+// ─── Buildings ──────────────────────────────────────────
+
+model Building {
+  id        String       @id @default(cuid())
+  nationId  String
+  nation    Nation       @relation(fields: [nationId], references: [id], onDelete: Cascade)
+  type      BuildingType
+  level     Int          @default(1)
+  building  Boolean      @default(false) // under construction?
+  buildsAt  DateTime? // when construction finishes
+  createdAt DateTime     @default(now())
+}
+
+enum BuildingType {
+  RESIDENTIAL
+  FARM
+  FACTORY
+  COMMERCIAL
+  POWER_PLANT
+  RESEARCH_LAB
+  BARRACKS
+  CYBER_CENTER
+  MISSILE_DEFENSE
+  FIREWALL_ARRAY
+  INTELLIGENCE_HQ
+}
+
+// ─── Troops ─────────────────────────────────────────────
+
+model Troop {
+  id       String    @id @default(cuid())
+  nationId String
+  nation   Nation    @relation(fields: [nationId], references: [id], onDelete: Cascade)
+  type     UnitType
+  count    Int       @default(0)
+  training Int       @default(0) // units currently training
+  trainsAt DateTime? // when training batch finishes
+}
+
+enum UnitType {
+  INFANTRY
+  ARMOR
+  AIR_FORCE
+  DRONES
+  NAVY
+}
+
+// ─── Attacks ────────────────────────────────────────────
+
+model Attack {
+  id         String @id @default(cuid())
+  attackerId String
+  attacker   Nation @relation("attackerNation", fields: [attackerId], references: [id])
+  defenderId String
+  defender   Nation @relation("defenderNation", fields: [defenderId], references: [id])
+
+  // Forces sent
+  infantry Int @default(0)
+  armor    Int @default(0)
+  airForce Int @default(0)
+  drones   Int @default(0)
+  navy     Int @default(0)
+
+  // Results
+  resolved       Boolean  @default(false)
+  attackerWon    Boolean?
+  attackerLosses Json? // { infantry: X, armor: Y, ... }
+  defenderLosses Json?
+  lootCash       Float?
+  lootMaterials  Float?
+
+  createdAt  DateTime @default(now())
+  resolvesAt DateTime // when the attack lands
+}
+
+// ─── Cyber Operations ───────────────────────────────────
+
+model CyberOp {
+  id         String      @id @default(cuid())
+  attackerId String
+  attacker   Nation      @relation("attacker", fields: [attackerId], references: [id])
+  defenderId String
+  defender   Nation      @relation("defender", fields: [defenderId], references: [id])
+  type       CyberOpType
+  energyCost Float
+  success    Boolean?
+  result     Json? // op-specific result data
+  expiresAt  DateTime? // for effects that last X ticks
+  createdAt  DateTime    @default(now())
+}
+
+enum CyberOpType {
+  RECON_SCAN
+  NETWORK_INFILTRATION
+  SYSTEM_HACK
+  DATA_THEFT
+  INFRASTRUCTURE_SABOTAGE
+  MARKET_MANIPULATION
+  PROPAGANDA
+  EMP_STRIKE
+}
+
+// ─── Tech Research ──────────────────────────────────────
+
+model TechResearch {
+  id          String     @id @default(cuid())
+  nationId    String
+  nation      Nation     @relation(fields: [nationId], references: [id], onDelete: Cascade)
+  branch      TechBranch
+  node        String // specific node identifier
+  level       Int        @default(1)
+  researching Boolean    @default(false)
+  researchAt  DateTime? // when research completes
+  createdAt   DateTime   @default(now())
+
+  @@unique([nationId, branch, node])
+}
+
+enum TechBranch {
+  MILITARY
+  CYBER
+  ECONOMY
+  INFRASTRUCTURE
+}
+
+// ─── Market Orders ──────────────────────────────────────
+
+model MarketOrder {
+  id       String @id @default(cuid())
+  roundId  String
+  round    Round  @relation(fields: [roundId], references: [id])
+  nationId String
+  nation   Nation @relation("buyer", fields: [nationId], references: [id])
+  // For matched orders, track the seller
+  sellerId String?
+  seller   Nation? @relation("seller", fields: [sellerId], references: [id])
+
+  side      OrderSide
+  commodity Commodity
+  quantity  Float
+  price     Float       @default(0) // price per unit
+  filled    Float       @default(0)
+  status    OrderStatus @default(OPEN)
+  createdAt DateTime    @default(now())
+  filledAt  DateTime?
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum Commodity {
+  CASH
+  MATERIALS
+  TECH_POINTS
+  FOOD
+}
+
+enum OrderStatus {
+  OPEN
+  PARTIAL
+  FILLED
+  CANCELLED
+}
+
+// ─── Alliances ──────────────────────────────────────────
+
+model Alliance {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  tag         String           @unique // short 3-5 char tag
+  description String?
+  treasury    Float            @default(0)
+  members     AllianceMember[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model AllianceMember {
+  id         String       @id @default(cuid())
+  nationId   String       @unique
+  nation     Nation       @relation(fields: [nationId], references: [id])
+  allianceId String
+  alliance   Alliance     @relation(fields: [allianceId], references: [id], onDelete: Cascade)
+  role       AllianceRole @default(MEMBER)
+  joinedAt   DateTime     @default(now())
+}
+
+enum AllianceRole {
+  PRESIDENT
+  VICE_PRESIDENT
+  MINISTER_OF_WAR
+  MINISTER_OF_INTELLIGENCE
+  MINISTER_OF_TRADE
+  MEMBER
+}

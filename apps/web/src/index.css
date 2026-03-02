@@ -1,1 +1,65 @@
 @import "tailwindcss";
+
+/* Base styles */
+html {
+  color-scheme: dark;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Energy bar glow animation */
+@keyframes energy-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 4px rgba(59, 130, 246, 0.5),
+      0 0 8px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 8px rgba(59, 130, 246, 0.7),
+      0 0 16px rgba(59, 130, 246, 0.4);
+  }
+}
+
+.energy-glow {
+  animation: energy-glow 2s ease-in-out infinite;
+}
+
+/* Subtle pulse for action buttons */
+@keyframes subtle-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.action-pulse {
+  animation: subtle-pulse 3s ease-in-out infinite;
+}

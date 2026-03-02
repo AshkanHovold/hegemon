@@ -11,6 +11,41 @@ services:
       POSTGRES_DB: hegemon
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hegemon"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: hegemon-api
+    restart: unless-stopped
+    ports:
+      - "4100:4100"
+    environment:
+      DATABASE_URL: postgresql://hegemon:${POSTGRES_PASSWORD:-hegemon_dev}@postgres:5432/hegemon
+      API_PORT: "4100"
+      JWT_SECRET: ${JWT_SECRET:-hegemon-dev-secret-change-me}
+      CORS_ORIGINS: "http://optiplex-1.taile9c3be.ts.net:3100,http://localhost:3100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: http://optiplex-1.taile9c3be.ts.net:4100
+    container_name: hegemon-web
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    depends_on:
+      - api
 
 volumes:
   pgdata:
