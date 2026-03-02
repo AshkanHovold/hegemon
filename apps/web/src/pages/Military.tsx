@@ -3,6 +3,7 @@ import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
 import { TROOP_STATS, ALL_UNIT_TYPES } from "../lib/gameConstants";
 import { useCountdown } from "../hooks/useCountdown";
+import GameIcon, { UNIT_ICON_KEY } from "../components/GameIcon";
 import type {
   UnitType,
   RankedNation,
@@ -33,8 +34,9 @@ function TrainProgress({
   return (
     <div className="bg-gray-800 rounded-lg px-4 py-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-200">
-          {icon} Training {count.toLocaleString()} {name}
+        <span className="text-sm text-gray-200 flex items-center gap-2">
+          <GameIcon name={icon} size={20} />
+          Training {count.toLocaleString()} {name}
         </span>
         <span className="text-sm text-red-400 font-mono tabular-nums">
           {label}
@@ -126,7 +128,7 @@ export default function Military() {
     return {
       type,
       name: stats.name,
-      icon: stats.icon,
+      iconKey: UNIT_ICON_KEY[type] ?? "unit-infantry",
       count: troop?.count ?? 0,
       training: troop?.training ?? 0,
       trainsAt: troop?.trainsAt ?? null,
@@ -317,7 +319,7 @@ export default function Military() {
               <TrainProgress
                 key={item.type}
                 name={item.name}
-                icon={item.icon}
+                icon={item.iconKey}
                 count={item.training}
                 trainsAt={item.trainsAt!}
                 trainTimeMs={item.trainTimeMs}
@@ -375,8 +377,10 @@ export default function Military() {
               {troopData.map((t) => (
                 <tr key={t.type} className="hover:bg-gray-800/50">
                   <td className="px-5 py-3 text-gray-200">
-                    <span className="mr-2">{t.icon}</span>
-                    {t.name}
+                    <span className="inline-flex items-center gap-2">
+                      <GameIcon name={t.iconKey} size={22} />
+                      {t.name}
+                    </span>
                   </td>
                   <td className="px-5 py-3 text-right text-white font-semibold tabular-nums">
                     {t.count.toLocaleString()}
@@ -430,7 +434,7 @@ export default function Military() {
                   const s = TROOP_STATS[type];
                   return (
                     <option key={type} value={type}>
-                      {s.icon} {s.name} (ATK: {s.atk}, DEF: {s.def})
+                      {s.name} — ATK: {s.atk}, DEF: {s.def}
                     </option>
                   );
                 })}

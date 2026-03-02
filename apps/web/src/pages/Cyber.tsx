@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
+import GameIcon, { CYBER_ICON_KEY } from "../components/GameIcon";
+import type { RankedNation } from "../lib/types";
 
 type CyberOpType =
   | "RECON_SCAN"
@@ -161,10 +163,14 @@ export default function Cyber() {
   const [activeOps, setActiveOps] = useState<ActiveOp[]>([]);
   const [defenseLog, setDefenseLog] = useState<DefenseEntry[]>([]);
   const [launching, setLaunching] = useState<string | null>(null);
-  const [targetId, setTargetId] = useState("");
+  const [selectedTarget, setSelectedTarget] = useState<RankedNation | null>(null);
   const [selectedOp, setSelectedOp] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<string | null>(null);
+
+  // Nation picker state
+  const [nations, setNations] = useState<RankedNation[]>([]);
+  const [nationSearch, setNationSearch] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +192,21 @@ export default function Cyber() {
     return () => { cancelled = true; };
   }, [nation?.id]);
 
+  // Fetch nations for target picker
+  useEffect(() => {
+    let cancelled = false;
+    async function loadNations() {
+      try {
+        const data = await api.get<{ rankings: RankedNation[] }>("/rankings?limit=100");
+        if (!cancelled) setNations(data.rankings);
+      } catch {
+        // ignore
+      }
+    }
+    loadNations();
+    return () => { cancelled = true; };
+  }, []);
+
   if (!nation) return null;
 
   const cyberCenter = nation.buildings.find((b) => b.type === "CYBER_CENTER");
@@ -194,14 +215,24 @@ export default function Cyber() {
   );
   const cyberLevel = cyberCenter?.level ?? 0;
   const firewallLevel = firewallArray?.level ?? 0;
-  const maxSlots = cyberLevel; // 1 slot per cyber center level
+  const maxSlots = cyberLevel;
   const usedSlots = activeOps.filter(
     (op) => op.expiresAt && new Date(op.expiresAt) > new Date()
   ).length;
 
+  // Success rate calculation
+  const baseSuccessRate = 60 + 5 * cyberLevel;
+
+  const filteredNations = nations.filter(
+    (n) =>
+      n.id !== nation.id &&
+      (n.name.toLowerCase().includes(nationSearch.toLowerCase()) ||
+        n.username.toLowerCase().includes(nationSearch.toLowerCase()))
+  );
+
   async function handleLaunch(type: string) {
-    if (!targetId.trim()) {
-      setError("Enter a target nation ID");
+    if (!selectedTarget) {
+      setError("Select a target nation first");
       return;
     }
     setError("");
@@ -211,10 +242,10 @@ export default function Cyber() {
       const data = await api.post<{
         op: ActiveOp;
         result: { success: boolean; [key: string]: unknown };
-      }>("/nation/cyber/launch", { type, targetId: targetId.trim() });
+      }>("/nation/cyber/launch", { type, targetId: selectedTarget.id });
       if (data.result.success) {
         setResult(
-          `${opTypeName(type)} succeeded against target!` +
+          `${opTypeName(type)} succeeded against ${selectedTarget.name}!` +
             (data.result.stolen
               ? ` Stole ${data.result.stolen} tech points.`
               : "") +
@@ -223,7 +254,7 @@ export default function Cyber() {
               : "")
         );
       } else {
-        setResult(`${opTypeName(type)} failed. Target's defenses held.`);
+        setResult(`${opTypeName(type)} failed against ${selectedTarget.name}. Target's defenses held.`);
       }
       await refreshNation();
       // Refresh cyber data
@@ -248,16 +279,19 @@ export default function Cyber() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white">Cyber Operations</h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight">Cyber Operations</h1>
         <p className="text-gray-500 text-sm mt-1">
           Execute covert operations against enemy nations
         </p>
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <div className="text-xs text-gray-500">Cyber Center Level</div>
+          <div className="flex items-center gap-2 mb-1">
+            <GameIcon name="building-cyber-center" size={18} />
+            <span className="text-xs text-gray-500">Cyber Center</span>
+          </div>
           <div className="text-2xl font-bold text-cyan-400">
             {cyberLevel || (
               <span className="text-gray-600 text-sm">Not Built</span>
@@ -265,46 +299,61 @@ export default function Cyber() {
           </div>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <div className="text-xs text-gray-500">Active Op Slots</div>
+          <div className="text-xs text-gray-500 mb-1">Active Op Slots</div>
           <div className="text-2xl font-bold text-white">
             {usedSlots}{" "}
             <span className="text-sm text-gray-500">/ {maxSlots}</span>
           </div>
         </div>
         <div className="bg-gray-900 border border-blue-500/20 rounded-xl p-4">
-          <div className="text-xs text-gray-500">Energy Available</div>
+          <div className="flex items-center gap-2 mb-1">
+            <GameIcon name="resource-energy" size={18} />
+            <span className="text-xs text-gray-500">Energy</span>
+          </div>
           <div className="text-2xl font-bold text-blue-400">
             {Math.floor(nation.energy)}
           </div>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <div className="text-xs text-gray-500">Firewall Level</div>
+          <div className="flex items-center gap-2 mb-1">
+            <GameIcon name="building-firewall-array" size={18} />
+            <span className="text-xs text-gray-500">Firewall</span>
+          </div>
           <div className="text-2xl font-bold text-emerald-400">
             {firewallLevel || (
               <span className="text-gray-600 text-sm">Not Built</span>
             )}
           </div>
+          {cyberLevel > 0 && (
+            <div className="text-xs text-gray-500 mt-1">
+              Base success: {baseSuccessRate}%
+            </div>
+          )}
         </div>
       </div>
 
       {/* Error / Result messages */}
       {error && (
-        <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-          {error}
+        <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 flex items-center justify-between">
+          <span>{error}</span>
           <button
             onClick={() => setError("")}
-            className="ml-3 text-red-300 hover:text-red-200"
+            className="text-red-300 hover:text-red-200 text-xs"
           >
             Dismiss
           </button>
         </div>
       )}
       {result && (
-        <div className="text-sm text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-4 py-3">
-          {result}
+        <div className={`text-sm rounded-lg px-4 py-3 flex items-center justify-between ${
+          result.includes("succeeded")
+            ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+            : "text-amber-400 bg-amber-500/10 border border-amber-500/20"
+        }`}>
+          <span>{result}</span>
           <button
             onClick={() => setResult(null)}
-            className="ml-3 text-cyan-300 hover:text-cyan-200"
+            className="text-gray-300 hover:text-gray-200 text-xs"
           >
             Dismiss
           </button>
@@ -314,6 +363,7 @@ export default function Cyber() {
       {/* No Cyber Center warning */}
       {!cyberCenter && (
         <div className="bg-gray-900 border border-amber-500/20 rounded-xl p-5 text-center">
+          <GameIcon name="building-cyber-center" size={48} className="mx-auto mb-3 opacity-50" />
           <p className="text-amber-400 text-sm font-medium">
             Build a Cyber Center to unlock cyber operations
           </p>
@@ -330,108 +380,177 @@ export default function Cyber() {
             Active Operations
           </h2>
           <div className="space-y-2">
-            {activeOps.map((op) => (
-              <div
-                key={op.id}
-                className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3"
-              >
-                <div>
-                  <span className="text-sm text-gray-200 font-medium">
-                    {opTypeName(op.type)}
-                  </span>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {"\u2192"} {op.defender.name}
-                  </span>
-                  <span
-                    className={`text-xs ml-2 ${op.success ? "text-emerald-400" : op.success === false ? "text-red-400" : "text-amber-400"}`}
-                  >
-                    {op.success ? "Success" : op.success === false ? "Failed" : "Pending"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {op.expiresAt && (
-                    <span className="text-sm text-cyan-400 font-mono">
-                      {timeRemaining(op.expiresAt)}
-                    </span>
-                  )}
-                  <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Target input for launching ops */}
-      {cyberCenter && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <h2 className="text-sm font-semibold text-white mb-3">
-            Target Selection
-          </h2>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-              placeholder="Enter target nation ID"
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-          <p className="text-xs text-gray-600 mt-1">
-            Find nation IDs on the Rankings page
-          </p>
-        </div>
-      )}
-
-      {/* Operations grid */}
-      {cyberCenter && (
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-3">
-            Available Operations
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {CYBER_OPS.map((op) => {
-              const canAfford = nation.energy >= op.energy;
-              const isLaunching = launching === op.type;
-
+            {activeOps.map((op) => {
+              const iconKey = CYBER_ICON_KEY[op.type] ?? "cyber-hack";
               return (
                 <div
-                  key={op.type}
-                  className={`${op.bg} border ${op.color} rounded-xl p-5 flex flex-col hover:scale-[1.01] transition-transform`}
+                  key={op.id}
+                  className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3"
                 >
-                  <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <GameIcon name={iconKey} size={24} />
+                    <div>
+                      <span className="text-sm text-gray-200 font-medium">
+                        {opTypeName(op.type)}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-2">
+                        {"\u2192"} {op.defender.name}
+                      </span>
+                    </div>
                     <span
-                      className={`text-xs font-medium ${op.iconColor} bg-gray-800 px-2 py-0.5 rounded`}
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        op.success ? "text-emerald-400 bg-emerald-500/10" :
+                        op.success === false ? "text-red-400 bg-red-500/10" :
+                        "text-amber-400 bg-amber-500/10"
+                      }`}
                     >
-                      {op.category}
-                    </span>
-                    <span
-                      className={`text-xs font-semibold ${canAfford ? "text-blue-400" : "text-red-400"}`}
-                    >
-                      {op.energy} EN
+                      {op.success ? "Success" : op.success === false ? "Failed" : "Pending"}
                     </span>
                   </div>
-                  <h3 className="text-sm font-semibold text-white mb-1">
-                    {op.name}
-                  </h3>
-                  <p className="text-xs text-gray-400 mb-3 flex-1">
-                    {op.desc}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600">
-                      CD: {op.cooldown}
-                    </span>
-                    <button
-                      onClick={() => handleLaunch(op.type)}
-                      disabled={!canAfford || isLaunching || !targetId.trim()}
-                      className="bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800/50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border border-gray-700"
-                    >
-                      {isLaunching ? "Launching..." : "Execute"}
-                    </button>
+                  <div className="flex items-center gap-3">
+                    {op.expiresAt && (
+                      <span className="text-sm text-cyan-400 font-mono tabular-nums">
+                        {timeRemaining(op.expiresAt)}
+                      </span>
+                    )}
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
                   </div>
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Target picker + Operations grid (side by side on desktop) */}
+      {cyberCenter && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Target picker - 1 col */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-white mb-3">
+              Select Target
+            </h2>
+            <input
+              type="text"
+              value={nationSearch}
+              onChange={(e) => setNationSearch(e.target.value)}
+              placeholder="Search nations..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-cyan-500 mb-3"
+            />
+            {selectedTarget && (
+              <div className="mb-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2 flex items-center justify-between">
+                <div>
+                  <span className="text-sm text-cyan-400 font-medium">
+                    {selectedTarget.name}
+                  </span>
+                  <span className="text-xs text-gray-500 ml-2">
+                    #{selectedTarget.rank}
+                  </span>
+                  {selectedTarget.alliance && (
+                    <span className="text-xs text-blue-400 ml-2">
+                      [{selectedTarget.alliance.tag}]
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSelectedTarget(null)}
+                  className="text-xs text-gray-500 hover:text-gray-300"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {filteredNations.length === 0 ? (
+                <p className="text-xs text-gray-600 py-2 text-center">No nations found</p>
+              ) : (
+                filteredNations.slice(0, 20).map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => setSelectedTarget(n)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                      selectedTarget?.id === n.id
+                        ? "bg-cyan-500/20 border border-cyan-500/30"
+                        : "hover:bg-gray-800 border border-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-600 w-6 tabular-nums">#{n.rank}</span>
+                        <span className="text-gray-200">{n.name}</span>
+                        {n.alliance && (
+                          <span className="text-xs text-blue-400/70">[{n.alliance.tag}]</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-500 tabular-nums">
+                        {n.score.toLocaleString()}
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Operations grid - 2 cols */}
+          <div className="xl:col-span-2">
+            <h2 className="text-sm font-semibold text-white mb-3">
+              Available Operations
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {CYBER_OPS.map((op) => {
+                const canAfford = nation.energy >= op.energy;
+                const isLaunching = launching === op.type;
+                const iconKey = CYBER_ICON_KEY[op.type] ?? "cyber-hack";
+
+                return (
+                  <div
+                    key={op.type}
+                    className={`${op.bg} border ${op.color} rounded-xl p-4 flex flex-col hover:scale-[1.01] transition-transform`}
+                  >
+                    <div className="flex items-start gap-3 mb-2">
+                      <GameIcon name={iconKey} size={32} className="shrink-0 rounded-lg" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-white">
+                            {op.name}
+                          </h3>
+                          <span
+                            className={`text-xs font-semibold ${canAfford ? "text-blue-400" : "text-red-400"}`}
+                          >
+                            {op.energy} EN
+                          </span>
+                        </div>
+                        <span
+                          className={`text-xs ${op.iconColor} bg-gray-800 px-1.5 py-0.5 rounded inline-block mt-1`}
+                        >
+                          {op.category}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3 flex-1">
+                      {op.desc}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-600">
+                        CD: {op.cooldown}
+                      </span>
+                      <button
+                        onClick={() => handleLaunch(op.type)}
+                        disabled={!canAfford || isLaunching || !selectedTarget}
+                        className={`text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border ${
+                          !canAfford || !selectedTarget
+                            ? "bg-gray-800/50 border-gray-700 cursor-not-allowed opacity-50"
+                            : "bg-gray-800 hover:bg-gray-700 border-gray-700"
+                        }`}
+                      >
+                        {isLaunching ? "Launching..." : !selectedTarget ? "Select Target" : "Execute"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -447,42 +566,39 @@ export default function Cyber() {
           </p>
         ) : (
           <div className="space-y-2">
-            {defenseLog.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      entry.success === false
-                        ? "bg-emerald-400"
-                        : "bg-amber-400"
-                    }`}
-                  />
-                  <span className="text-gray-300">
-                    {opTypeName(entry.type)}
-                  </span>
-                  <span className="text-gray-600">
-                    from {entry.attacker.name}
-                  </span>
+            {defenseLog.map((entry) => {
+              const iconKey = CYBER_ICON_KEY[entry.type] ?? "cyber-hack";
+              return (
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <GameIcon name={iconKey} size={20} />
+                    <span className="text-gray-300">
+                      {opTypeName(entry.type)}
+                    </span>
+                    <span className="text-gray-600">
+                      from {entry.attacker.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        entry.success === false
+                          ? "text-emerald-400 bg-emerald-500/10"
+                          : "text-red-400 bg-red-500/10"
+                      }`}
+                    >
+                      {entry.success === false ? "Blocked" : "Breached"}
+                    </span>
+                    <span className="text-xs text-gray-600">
+                      {timeAgo(entry.createdAt)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`text-xs font-medium ${
-                      entry.success === false
-                        ? "text-emerald-400"
-                        : "text-amber-400"
-                    }`}
-                  >
-                    {entry.success === false ? "Blocked" : "Breached"}
-                  </span>
-                  <span className="text-xs text-gray-600">
-                    {timeAgo(entry.createdAt)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

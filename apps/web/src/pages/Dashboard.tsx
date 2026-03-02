@@ -4,6 +4,7 @@ import { useGame } from "../context/GameContext";
 import { useAuth } from "../context/AuthContext";
 import { calculateProductionRates } from "../lib/gameConstants";
 import { api } from "../lib/api";
+import GameIcon from "../components/GameIcon";
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -14,32 +15,28 @@ function formatNumber(n: number): string {
 const QUICK_ACTIONS = [
   {
     label: "Build",
-    icon: "\ud83c\udfdb",
+    iconName: "building-residential",
     to: "/game/nation",
-    color: "bg-amber-600 hover:bg-amber-500",
+    color: "bg-amber-600/90 hover:bg-amber-500",
   },
   {
     label: "Train",
-    icon: "\u2694",
+    iconName: "unit-infantry",
     to: "/game/military",
-    color: "bg-red-600 hover:bg-red-500",
+    color: "bg-red-600/90 hover:bg-red-500",
   },
   {
-    label: "Research",
-    icon: "^",
+    label: "Cyber Ops",
+    iconName: "cyber-hack",
     to: "/game/cyber",
-    color: "bg-cyan-600 hover:bg-cyan-500",
+    color: "bg-cyan-600/90 hover:bg-cyan-500",
   },
   {
-    label: "Scout",
-    icon: "\ud83d\udd0d",
-    to: "/game/cyber",
-    color: "bg-violet-600 hover:bg-violet-500",
+    label: "Market",
+    iconName: "resource-materials",
+    to: "/game/market",
+    color: "bg-violet-600/90 hover:bg-violet-500",
   },
-];
-
-const ACTIVITY_FEED = [
-  { time: "Just now", text: "Welcome to Hegemon! Build your nation.", type: "info" },
 ];
 
 export default function Dashboard() {
@@ -47,6 +44,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [devGranting, setDevGranting] = useState(false);
   const [devMsg, setDevMsg] = useState("");
+  const [devOpen, setDevOpen] = useState(false);
 
   if (!nation || !round) return null;
 
@@ -85,6 +83,7 @@ export default function Dashboard() {
     1,
     Math.ceil((now - roundStart) / (24 * 60 * 60 * 1000)),
   );
+  const roundPercent = Math.min(100, (currentDay / totalDays) * 100);
 
   const allianceName =
     nation.allianceMembership?.alliance?.name ?? "None";
@@ -92,7 +91,7 @@ export default function Dashboard() {
   const RESOURCE_CARDS = [
     {
       label: "Cash",
-      icon: "$",
+      iconName: "resource-cash",
       value: formatNumber(nation.cash),
       rate: `+${formatNumber(rates.cashRate)}/tick`,
       color: "text-amber-400",
@@ -101,7 +100,7 @@ export default function Dashboard() {
     },
     {
       label: "Materials",
-      icon: "*",
+      iconName: "resource-materials",
       value: formatNumber(nation.materials),
       rate: `+${formatNumber(rates.materialsRate)}/tick`,
       color: "text-slate-300",
@@ -110,7 +109,7 @@ export default function Dashboard() {
     },
     {
       label: "Tech Points",
-      icon: "^",
+      iconName: "resource-tech",
       value: formatNumber(nation.techPoints),
       rate: `+${formatNumber(rates.techRate)}/tick`,
       color: "text-cyan-400",
@@ -119,7 +118,7 @@ export default function Dashboard() {
     },
     {
       label: "Energy",
-      icon: "!",
+      iconName: "resource-energy",
       value: `${energyCurrent} / ${energyMax}`,
       rate: `+${nation.energyRegen.toFixed(1)}/tick`,
       color: "text-blue-400",
@@ -128,16 +127,16 @@ export default function Dashboard() {
     },
     {
       label: "Population",
-      icon: "#",
+      iconName: "resource-population",
       value: formatNumber(nation.population),
-      rate: `Cap: +${formatNumber(rates.popCapacity)}`,
+      rate: `Cap: ${formatNumber(rates.popCapacity)}`,
       color: "text-violet-400",
       border: "border-violet-500/20",
       bg: "bg-violet-500/5",
     },
     {
       label: "Food",
-      icon: "~",
+      iconName: "resource-food",
       value: formatNumber(nation.food),
       rate: `+${formatNumber(rates.foodRate)}/tick`,
       color: "text-emerald-400",
@@ -150,7 +149,7 @@ export default function Dashboard() {
     <div className="space-y-6 max-w-7xl">
       {/* Welcome */}
       <div>
-        <h1 className="text-2xl font-bold text-white">
+        <h1 className="text-2xl font-bold text-white tracking-tight">
           Welcome back, {user?.username ?? "Commander"}
         </h1>
         <p className="text-gray-500 text-sm mt-1">
@@ -159,142 +158,124 @@ export default function Dashboard() {
       </div>
 
       {/* Round status */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="text-sm">
-            <span className="text-gray-500">Round {round.number}</span>
-            <span className="mx-2 text-gray-700">|</span>
-            <span className="text-gray-400">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-400">Round {round.number}</span>
+            <span className="text-gray-700">|</span>
+            <span className="text-gray-300">
               Day {currentDay} of {totalDays}
             </span>
-            <span className="mx-2 text-gray-700">|</span>
+            <span className="text-gray-700">|</span>
             <span className="text-amber-400 font-medium">{round.phase} Phase</span>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">Tick every 10 min</span>
+        </div>
+        <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-500"
+            style={{ width: `${roundPercent}%` }}
+          />
         </div>
       </div>
 
       {/* Resource cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {RESOURCE_CARDS.map((res) => (
           <div
             key={res.label}
-            className={`${res.bg} border ${res.border} rounded-xl p-4`}
+            className={`${res.bg} border ${res.border} rounded-xl p-4 hover:border-opacity-50 transition-colors`}
           >
             <div className="flex items-center gap-2 mb-2">
-              <span className={`text-lg ${res.color}`}>{res.icon}</span>
-              <span className="text-sm text-gray-400">{res.label}</span>
+              <GameIcon name={res.iconName} size={22} />
+              <span className="text-xs text-gray-400 font-medium">{res.label}</span>
             </div>
             <div className={`text-xl font-bold ${res.color} tabular-nums`}>
               {res.value}
             </div>
-            <div className="text-xs text-gray-500 mt-1">{res.rate}</div>
+            <div className="text-xs text-gray-500 mt-1 tabular-nums">{res.rate}</div>
           </div>
         ))}
       </div>
 
       {/* Energy section */}
-      <div className="bg-gray-900 border border-blue-500/20 rounded-xl p-6">
+      <div className="bg-gray-900 border border-blue-500/20 rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <span className="text-blue-400">!</span> Energy Status
+          <h2 className="text-base font-semibold text-white flex items-center gap-2">
+            <GameIcon name="resource-energy" size={22} /> Energy Status
           </h2>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-400">
             {minutesToFull > 0
               ? `Full in ~${Math.floor(minutesToFull / 60)}h ${minutesToFull % 60}m`
               : "Fully charged"}
           </span>
         </div>
-        <div className="w-full h-6 bg-gray-800 rounded-full overflow-hidden relative">
+        <div className="w-full h-5 bg-gray-800 rounded-full overflow-hidden relative">
           <div
             className="h-full bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 rounded-full energy-glow transition-all duration-500"
             style={{ width: `${energyPercent}%` }}
           />
-          <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white">
+          <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white tabular-nums">
             {energyCurrent} / {energyMax}
           </span>
         </div>
         <div className="flex justify-between mt-2 text-xs text-gray-500">
           <span>
-            Regen rate: {nation.energyRegen.toFixed(1)} energy / tick
+            Regen: {nation.energyRegen.toFixed(1)} / tick
           </span>
-          <span>{energyPercent.toFixed(0)}% charged</span>
+          <span>{energyPercent.toFixed(0)}%</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Quick actions */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-3">
-            Quick Actions
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            {QUICK_ACTIONS.map((action) => (
-              <Link
-                key={action.label}
-                to={action.to}
-                className={`${action.color} text-white rounded-xl p-4 flex items-center gap-3 transition-all hover:scale-[1.02] action-pulse`}
-              >
-                <span className="text-2xl">{action.icon}</span>
-                <span className="font-semibold">{action.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Activity feed */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-3">
-            Recent Activity
-          </h2>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
-            {ACTIVITY_FEED.map((item, i) => (
-              <div key={i} className="px-4 py-3 flex items-start gap-3">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                    item.type === "success"
-                      ? "bg-emerald-400"
-                      : item.type === "danger"
-                        ? "bg-red-400"
-                        : item.type === "warning"
-                          ? "bg-amber-400"
-                          : "bg-blue-400"
-                  }`}
-                />
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-300">{item.text}</p>
-                  <p className="text-xs text-gray-600 mt-0.5">{item.time}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Dev tools */}
-      <div className="bg-gray-900 border border-yellow-500/20 rounded-xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-yellow-400">Dev Tools</h2>
-            <p className="text-xs text-gray-500">
-              +$50K cash, +20K materials, +5K tech, +10K food, refill energy
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {devMsg && (
-              <span className="text-xs text-green-400">{devMsg}</span>
-            )}
-            <button
-              onClick={handleDevGrant}
-              disabled={devGranting}
-              className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-600/50 text-black font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+      {/* Quick Actions */}
+      <div>
+        <h2 className="text-base font-semibold text-white mb-3">
+          Quick Actions
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {QUICK_ACTIONS.map((action) => (
+            <Link
+              key={action.label}
+              to={action.to}
+              className={`${action.color} text-white rounded-xl p-4 flex items-center gap-3 transition-all hover:scale-[1.02] hover:shadow-lg`}
             >
-              {devGranting ? "Granting..." : "Grant Resources"}
-            </button>
-          </div>
+              <GameIcon name={action.iconName} size={32} className="drop-shadow-lg" />
+              <span className="font-semibold">{action.label}</span>
+            </Link>
+          ))}
         </div>
+      </div>
+
+      {/* Dev tools - collapsible */}
+      <div className="border border-gray-800 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setDevOpen(!devOpen)}
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-900/50 hover:bg-gray-900 transition-colors text-left"
+        >
+          <span className="text-xs font-medium text-gray-600">Dev Tools</span>
+          <span className="text-xs text-gray-700">{devOpen ? "\u25b2" : "\u25bc"}</span>
+        </button>
+        {devOpen && (
+          <div className="bg-gray-900/30 border-t border-gray-800 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500">
+                +$50K cash, +20K materials, +5K tech, +10K food, refill energy
+              </p>
+              <div className="flex items-center gap-3">
+                {devMsg && (
+                  <span className="text-xs text-green-400">{devMsg}</span>
+                )}
+                <button
+                  onClick={handleDevGrant}
+                  disabled={devGranting}
+                  className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-700/50 text-gray-300 font-medium text-xs px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {devGranting ? "Granting..." : "Grant Resources"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

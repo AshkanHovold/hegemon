@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
+import GameIcon from "../components/GameIcon";
 
 const FEATURES = [
   {
-    icon: "$",
+    iconName: "resource-cash",
     title: "Economy",
     description:
       "Build a thriving economy. Trade on the open market, manage resources, and fund your rise to power.",
@@ -11,7 +12,7 @@ const FEATURES = [
     bg: "bg-amber-500/5",
   },
   {
-    icon: "\u2694",
+    iconName: "unit-infantry",
     title: "Military",
     description:
       "Raise armies, train elite units, and wage war against rival nations. Conquer or be conquered.",
@@ -20,7 +21,7 @@ const FEATURES = [
     bg: "bg-red-500/5",
   },
   {
-    icon: "\ud83d\udd12",
+    iconName: "cyber-hack",
     title: "Cyber Warfare",
     description:
       "Hack enemy infrastructure, steal intelligence, sabotage production. The invisible battlefield.",
@@ -29,7 +30,7 @@ const FEATURES = [
     bg: "bg-cyan-500/5",
   },
   {
-    icon: "\ud83e\udd1d",
+    iconName: "building-intelligence-hq",
     title: "Alliances",
     description:
       "Form powerful alliances, coordinate attacks, share resources. Together you are unstoppable.",
@@ -44,7 +45,10 @@ export default function Landing() {
     <div className="min-h-screen bg-gray-950 text-gray-100">
       {/* Navigation */}
       <nav className="flex items-center justify-between px-8 py-4 border-b border-gray-900">
-        <span className="text-xl font-bold tracking-tight">HEGEMON</span>
+        <div className="flex items-center gap-3">
+          <img src="/assets/art/logo-emblem.png" alt="Hegemon" className="w-8 h-8 object-contain" />
+          <span className="text-xl font-bold tracking-tight">HEGEMON</span>
+        </div>
         <div className="flex items-center gap-4">
           <Link
             to="/login"
@@ -62,23 +66,35 @@ export default function Landing() {
       </nav>
 
       {/* Hero */}
-      <section className="flex flex-col items-center justify-center text-center px-4 py-32">
+      <section className="relative flex flex-col items-center justify-center text-center px-4 py-24 overflow-hidden">
+        {/* Background hero image */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-15"
+          style={{ backgroundImage: "url(/assets/art/hero.png)" }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-gray-950/50 via-transparent to-gray-950" />
+
         <div className="relative">
-          <h1 className="text-7xl sm:text-8xl font-black tracking-tighter text-white">
+          <img
+            src="/assets/art/logo-emblem.png"
+            alt="Hegemon"
+            className="w-24 h-24 mx-auto mb-6 drop-shadow-2xl"
+          />
+          <h1 className="text-6xl sm:text-8xl font-black tracking-tighter text-white">
             HEGEMON
           </h1>
-          <div className="absolute inset-0 text-7xl sm:text-8xl font-black tracking-tighter text-blue-500 blur-2xl opacity-30">
+          <div className="absolute inset-0 text-6xl sm:text-8xl font-black tracking-tighter text-blue-500 blur-2xl opacity-20 pointer-events-none" style={{ top: "6rem" }}>
             HEGEMON
           </div>
         </div>
-        <p className="mt-4 text-xl sm:text-2xl text-gray-400 max-w-xl">
+        <p className="relative mt-4 text-xl sm:text-2xl text-gray-400 max-w-xl">
           Build your nation. Forge alliances. Wage war.
           <br />
           <span className="text-gray-300 font-medium">
             Become the dominant power.
           </span>
         </p>
-        <div className="flex gap-4 mt-10">
+        <div className="relative flex gap-4 mt-10">
           <Link
             to="/register"
             className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-lg text-lg font-semibold transition-all hover:shadow-lg hover:shadow-blue-500/25"
@@ -92,9 +108,8 @@ export default function Landing() {
             Login
           </Link>
         </div>
-        <p className="mt-6 text-sm text-gray-600">
-          Round 7 in progress &middot; 1,247 active nations &middot; Day 14 of
-          28
+        <p className="relative mt-6 text-sm text-gray-600">
+          Browser-based multiplayer strategy &middot; Free to play
         </p>
       </section>
 
@@ -106,7 +121,9 @@ export default function Landing() {
               key={feat.title}
               className={`${feat.bg} border ${feat.border} rounded-xl p-6 transition-all hover:scale-[1.02]`}
             >
-              <div className={`text-3xl mb-3 ${feat.color}`}>{feat.icon}</div>
+              <div className="mb-3">
+                <GameIcon name={feat.iconName} size={40} className="drop-shadow-lg" />
+              </div>
               <h3 className="text-lg font-semibold text-white mb-2">
                 {feat.title}
               </h3>
@@ -115,28 +132,6 @@ export default function Landing() {
               </p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* Stats bar */}
-      <section className="border-t border-gray-900 py-12">
-        <div className="max-w-4xl mx-auto flex justify-around text-center">
-          <div>
-            <div className="text-2xl font-bold text-white">7</div>
-            <div className="text-sm text-gray-500">Rounds Played</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-white">12,480</div>
-            <div className="text-sm text-gray-500">Nations Created</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-white">342</div>
-            <div className="text-sm text-gray-500">Alliances Formed</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-white">89,120</div>
-            <div className="text-sm text-gray-500">Battles Fought</div>
-          </div>
         </div>
       </section>
 

@@ -2,14 +2,14 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const NAV_ITEMS = [
-  { to: "/game", icon: "\u2302", label: "Dashboard", end: true },
-  { to: "/game/nation", icon: "\ud83c\udfdb", label: "Nation" },
-  { to: "/game/military", icon: "\u2694", label: "Military" },
-  { to: "/game/cyber", icon: "\ud83d\udd12", label: "Cyber Ops" },
-  { to: "/game/market", icon: "\ud83d\udcc8", label: "Market" },
-  { to: "/game/alliance", icon: "\ud83e\udd1d", label: "Alliance" },
-  { to: "/game/rankings", icon: "\ud83c\udfc6", label: "Rankings" },
-  { to: "/game/profile", icon: "\u2699", label: "Profile" },
+  { to: "/game", icon: "/assets/icons/resource-cash.png", label: "Dashboard", end: true },
+  { to: "/game/nation", icon: "/assets/icons/building-residential.png", label: "Nation" },
+  { to: "/game/military", icon: "/assets/icons/unit-infantry.png", label: "Military" },
+  { to: "/game/cyber", icon: "/assets/icons/cyber-hack.png", label: "Cyber Ops" },
+  { to: "/game/market", icon: "/assets/icons/resource-materials.png", label: "Market" },
+  { to: "/game/alliance", icon: "/assets/icons/building-intelligence-hq.png", label: "Alliance" },
+  { to: "/game/rankings", icon: "/assets/icons/building-commercial.png", label: "Rankings" },
+  { to: "/game/profile", icon: "/assets/icons/building-research-lab.png", label: "Profile" },
 ];
 
 interface SidebarProps {
@@ -62,6 +62,7 @@ export default function Sidebar({
             key={item.to}
             to={item.to}
             end={item.end}
+            title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isActive
@@ -70,7 +71,12 @@ export default function Sidebar({
               } ${collapsed ? "justify-center px-2" : ""}`
             }
           >
-            <span className="text-lg shrink-0">{item.icon}</span>
+            <img
+              src={item.icon}
+              alt={item.label}
+              className="w-5 h-5 shrink-0 object-contain"
+              loading="lazy"
+            />
             {!collapsed && <span>{item.label}</span>}
           </NavLink>
         ))}

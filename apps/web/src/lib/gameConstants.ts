@@ -20,61 +20,61 @@ export const BUILDING_PRODUCTION: Record<
 
 export const BUILDING_DISPLAY: Record<
   BuildingType,
-  { name: string; icon: string; desc: string }
+  { name: string; iconKey: string; desc: string }
 > = {
   RESIDENTIAL: {
     name: "Housing",
-    icon: "\ud83c\udfe0",
+    iconKey: "building-residential",
     desc: "Residential areas increasing population capacity.",
   },
   FARM: {
     name: "Farms",
-    icon: "\ud83c\udf3e",
+    iconKey: "building-farm",
     desc: "Produces food to sustain your population.",
   },
   FACTORY: {
     name: "Factories",
-    icon: "\ud83c\udfed",
+    iconKey: "building-factory",
     desc: "Converts raw materials into finished goods.",
   },
   COMMERCIAL: {
     name: "Commercial",
-    icon: "\ud83d\udcb0",
+    iconKey: "building-commercial",
     desc: "Generates cash through trade and commerce.",
   },
   POWER_PLANT: {
     name: "Power Plants",
-    icon: "\u26a1",
+    iconKey: "building-power-plant",
     desc: "Generates energy for operations.",
   },
   RESEARCH_LAB: {
     name: "Tech Labs",
-    icon: "\ud83d\udd2c",
+    iconKey: "building-research-lab",
     desc: "Research facilities generating tech points.",
   },
   BARRACKS: {
     name: "Barracks",
-    icon: "\u2694",
+    iconKey: "building-barracks",
     desc: "Trains and houses military units.",
   },
   CYBER_CENTER: {
     name: "Cyber Center",
-    icon: "\ud83d\udcbb",
+    iconKey: "building-cyber-center",
     desc: "Enables cyber operations against enemies.",
   },
   MISSILE_DEFENSE: {
     name: "Missile Defense",
-    icon: "\ud83d\udee1",
+    iconKey: "building-missile-defense",
     desc: "Defensive structures protecting your nation.",
   },
   FIREWALL_ARRAY: {
     name: "Firewall Array",
-    icon: "\ud83d\udd12",
+    iconKey: "building-firewall-array",
     desc: "Cyber defense systems against hacking.",
   },
   INTELLIGENCE_HQ: {
     name: "Intelligence HQ",
-    icon: "\ud83d\udd0d",
+    iconKey: "building-intelligence-hq",
     desc: "Boosts intelligence operation success rates.",
   },
 };
@@ -147,7 +147,7 @@ export const TROOP_STATS: Record<
   UnitType,
   {
     name: string;
-    icon: string;
+    iconKey: string;
     atk: number;
     def: number;
     costCash: number;
@@ -157,7 +157,7 @@ export const TROOP_STATS: Record<
 > = {
   INFANTRY: {
     name: "Infantry",
-    icon: "\ud83d\udc82",
+    iconKey: "unit-infantry",
     atk: 3,
     def: 2,
     costCash: 100,
@@ -166,7 +166,7 @@ export const TROOP_STATS: Record<
   },
   ARMOR: {
     name: "Tanks",
-    icon: "\ud83d\ude9c",
+    iconKey: "unit-armor",
     atk: 15,
     def: 12,
     costCash: 800,
@@ -175,7 +175,7 @@ export const TROOP_STATS: Record<
   },
   AIR_FORCE: {
     name: "Air Force",
-    icon: "\u2708\ufe0f",
+    iconKey: "unit-air-force",
     atk: 20,
     def: 5,
     costCash: 1200,
@@ -184,7 +184,7 @@ export const TROOP_STATS: Record<
   },
   DRONES: {
     name: "Drones",
-    icon: "\ud83d\udef8",
+    iconKey: "unit-drones",
     atk: 10,
     def: 3,
     costCash: 500,
@@ -193,7 +193,7 @@ export const TROOP_STATS: Record<
   },
   NAVY: {
     name: "Navy",
-    icon: "\u2693",
+    iconKey: "unit-navy",
     atk: 12,
     def: 10,
     costCash: 1000,

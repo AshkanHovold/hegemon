@@ -9,6 +9,7 @@ import {
   upgradeCost,
 } from "../lib/gameConstants";
 import { useCountdown } from "../hooks/useCountdown";
+import GameIcon from "../components/GameIcon";
 import type { Building, BuildingType } from "../lib/types";
 
 function formatCost(n: number): string {
@@ -19,7 +20,6 @@ function formatCost(n: number): string {
 
 /** Inline progress bar component for a building under construction */
 function BuildProgress({ building }: { building: Building }) {
-  // Calculate start time from buildsAt and known build duration
   const startTime =
     building.buildsAt
       ? new Date(
@@ -63,9 +63,12 @@ function QueueProgress({ building }: { building: Building }) {
   return (
     <div className="bg-gray-800 rounded-lg px-4 py-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-200">
-          {display.icon} {display.name} {"\u2192"} Lv.{building.level}
-        </span>
+        <div className="flex items-center gap-2">
+          <GameIcon name={display.iconKey} size={20} />
+          <span className="text-sm text-gray-200">
+            {display.name} {"\u2192"} Lv.{building.level}
+          </span>
+        </div>
         <span className="text-sm text-amber-400 font-mono tabular-nums">
           {label}
         </span>
@@ -136,7 +139,7 @@ export default function Nation() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white">Nation Management</h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight">Nation Management</h1>
         <p className="text-gray-500 text-sm mt-1">
           Build and upgrade your infrastructure
         </p>
@@ -189,7 +192,7 @@ export default function Nation() {
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{display.icon}</span>
+                  <GameIcon name={display.iconKey} size={36} className="rounded-lg" />
                   <div>
                     <h3 className="text-sm font-semibold text-white">
                       {display.name}
@@ -202,15 +205,10 @@ export default function Nation() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 10 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`w-1.5 h-3 rounded-sm ${
-                        i < b.level ? "bg-blue-500" : "bg-gray-800"
-                      }`}
-                    />
-                  ))}
+                <div className="text-right">
+                  <div className="text-lg font-bold text-blue-400 tabular-nums">
+                    {b.level}
+                  </div>
                 </div>
               </div>
 
@@ -268,7 +266,7 @@ export default function Nation() {
                   className="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-5 flex flex-col hover:border-gray-600 transition-colors"
                 >
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="text-2xl opacity-60">{display.icon}</span>
+                    <GameIcon name={display.iconKey} size={36} className="rounded-lg opacity-60" />
                     <div>
                       <h3 className="text-sm font-semibold text-gray-300">
                         {display.name}
@@ -311,8 +309,8 @@ export default function Nation() {
 
       {/* Population Management */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Population Management
+        <h2 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+          <GameIcon name="resource-population" size={22} /> Population Management
         </h2>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -344,8 +342,7 @@ export default function Nation() {
 
         <div>
           <label className="block text-sm text-gray-400 mb-2">
-            Population Split: {civilianPercent}% civilian / {100 - civilianPercent}%
-            military
+            Population Split
           </label>
           <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden flex">
             <div

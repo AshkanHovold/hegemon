@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
+import GameIcon from "../components/GameIcon";
 
 type CommodityKey = "MATERIALS" | "TECH_POINTS" | "FOOD";
 
-const TABS: { key: CommodityKey; label: string; color: string }[] = [
-  { key: "MATERIALS", label: "Materials", color: "text-slate-300" },
-  { key: "TECH_POINTS", label: "Tech Points", color: "text-cyan-400" },
-  { key: "FOOD", label: "Food", color: "text-emerald-400" },
+const TABS: { key: CommodityKey; label: string; color: string; iconName: string }[] = [
+  { key: "MATERIALS", label: "Materials", color: "text-slate-300", iconName: "resource-materials" },
+  { key: "TECH_POINTS", label: "Tech Points", color: "text-cyan-400", iconName: "resource-tech" },
+  { key: "FOOD", label: "Food", color: "text-emerald-400", iconName: "resource-food" },
 ];
 
 interface BookLevel {
@@ -301,7 +302,8 @@ export default function Market() {
                 : "text-gray-500 hover:text-gray-300 border border-transparent"
             }`}
           >
-            <span className={activeTab === tab.key ? tab.color : ""}>
+            <span className={`flex items-center gap-1.5 ${activeTab === tab.key ? tab.color : ""}`}>
+              <GameIcon name={tab.iconName} size={16} />
               {tab.label}
             </span>
           </button>

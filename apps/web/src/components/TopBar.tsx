@@ -1,4 +1,5 @@
 import ResourceBar from "./ResourceBar";
+import GameIcon from "./GameIcon";
 import type { Nation } from "../lib/types";
 
 function formatNumber(n: number): string {
@@ -25,39 +26,39 @@ export default function TopBar({ nation }: TopBarProps) {
   return (
     <div className="flex items-center gap-2 flex-wrap bg-gray-950/80 backdrop-blur border-b border-gray-800 px-4 py-2">
       <ResourceBar
-        icon="$"
+        iconName="resource-cash"
         label="Cash"
         value={formatNumber(cash)}
         colorClass="text-amber-400"
       />
       <ResourceBar
-        icon="*"
+        iconName="resource-materials"
         label="Materials"
         value={formatNumber(materials)}
         colorClass="text-slate-300"
       />
       <ResourceBar
-        icon="^"
+        iconName="resource-tech"
         label="Tech"
         value={formatNumber(tech)}
         colorClass="text-cyan-400"
       />
       <ResourceBar
-        icon="#"
+        iconName="resource-population"
         label="Pop"
         value={formatNumber(population)}
         colorClass="text-violet-400"
       />
       <ResourceBar
-        icon="~"
+        iconName="resource-food"
         label="Food"
         value={formatNumber(food)}
         colorClass="text-emerald-400"
       />
 
       {/* Energy bar - special treatment */}
-      <div className="flex items-center gap-2 rounded-full bg-gray-900 border border-gray-800 px-3 py-1 text-sm ml-auto">
-        <span className="text-base">!</span>
+      <div className="flex items-center gap-2 rounded-full bg-gray-900/80 border border-gray-800 px-3 py-1 text-sm ml-auto">
+        <GameIcon name="resource-energy" size={18} />
         <span className="text-gray-500 hidden lg:inline">Energy</span>
         <div className="w-24 h-3 bg-gray-800 rounded-full overflow-hidden relative">
           <div
