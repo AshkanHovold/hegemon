@@ -1,7 +1,45 @@
 import { useState, useEffect, useCallback } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
+import { timeAgo, commodityLabel } from "../lib/format";
 import GameIcon from "../components/GameIcon";
+import HelpTooltip from "../components/HelpTooltip";
+
+interface PricePoint {
+  timestamp: string;
+  avgPrice: number;
+}
+
+function PriceChart({ data }: { data: PricePoint[] }) {
+  if (data.length < 2)
+    return (
+      <div className="h-48 bg-gray-800 rounded-lg flex flex-col items-center justify-center border border-gray-700 gap-2">
+        <GameIcon name="resource-materials" size={32} className="opacity-30" />
+        <span className="text-sm text-gray-600">Not enough price data yet</span>
+      </div>
+    );
+
+  const prices = data.map((d) => d.avgPrice);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const w = 600;
+  const h = 180;
+  const pad = 20;
+  const points = data
+    .map((d, i) => {
+      const x = pad + (i / (data.length - 1)) * (w - 2 * pad);
+      const y = h - pad - ((d.avgPrice - min) / range) * (h - 2 * pad);
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-48">
+      <polyline fill="none" stroke="#3b82f6" strokeWidth="2" points={points} />
+    </svg>
+  );
+}
 
 type CommodityKey = "MATERIALS" | "TECH_POINTS" | "FOOD";
 
@@ -42,30 +80,6 @@ interface Trade {
   filledAt: string | null;
 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
-
-function commodityLabel(c: string): string {
-  switch (c) {
-    case "MATERIALS":
-      return "Materials";
-    case "TECH_POINTS":
-      return "Tech Points";
-    case "FOOD":
-      return "Food";
-    default:
-      return c;
-  }
-}
-
 export default function Market() {
   const { nation, refreshNation } = useGame();
   const [activeTab, setActiveTab] = useState<CommodityKey>("MATERIALS");
@@ -88,6 +102,7 @@ export default function Market() {
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
 
   // ── Fetch order book ────────────────────────────────────────────────
   const fetchOrderBook = useCallback(async () => {
@@ -98,7 +113,7 @@ export default function Market() {
       );
       setOrderBook(data);
     } catch (err) {
-      console.error("Failed to fetch order book:", err);
+      setError("Failed to load order book");
     } finally {
       setBookLoading(false);
     }
@@ -111,7 +126,7 @@ export default function Market() {
       const data = await api.get<{ orders: MyOrder[] }>("/market/my-orders");
       setMyOrders(data.orders);
     } catch (err) {
-      console.error("Failed to fetch orders:", err);
+      setError("Failed to load your orders");
     } finally {
       setOrdersLoading(false);
     }
@@ -126,17 +141,32 @@ export default function Market() {
       );
       setTrades(data.trades);
     } catch (err) {
-      console.error("Failed to fetch trades:", err);
+      setError("Failed to load recent trades");
     } finally {
       setTradesLoading(false);
     }
   }, [activeTab]);
 
+  // ── Fetch price history ────────────────────────────────────────────
+  const fetchPriceHistory = useCallback(async () => {
+    try {
+      const data = await api.get<{ history: PricePoint[] }>(
+        `/market/price-history?commodity=${activeTab}&period=24h`
+      );
+      setPriceHistory(data.history);
+    } catch {
+      setPriceHistory([]);
+    }
+  }, [activeTab]);
+
+  useEffect(() => { document.title = "Market - Hegemon"; }, []);
+
   // Fetch data on mount and when tab changes
   useEffect(() => {
     fetchOrderBook();
     fetchTrades();
-  }, [fetchOrderBook, fetchTrades]);
+    fetchPriceHistory();
+  }, [fetchOrderBook, fetchTrades, fetchPriceHistory]);
 
   useEffect(() => {
     fetchMyOrders();
@@ -242,7 +272,9 @@ export default function Market() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white">Market Exchange</h1>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          Market Exchange <HelpTooltip articleId="market-overview" size="md" />
+        </h1>
         <p className="text-gray-500 text-sm mt-1">
           Trade commodities with other nations
         </p>
@@ -250,7 +282,7 @@ export default function Market() {
 
       {/* Resource bar */}
       {nation && (
-        <div className="flex gap-6 bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 text-sm">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 text-sm">
           <div>
             <span className="text-gray-500">Cash: </span>
             <span className="text-amber-400 font-medium font-mono">
@@ -409,8 +441,8 @@ export default function Market() {
 
         {/* Place order */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-white mb-4">
-            Place Order
+          <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+            Place Order <HelpTooltip articleId="market-trading" />
           </h2>
 
           <div className="flex gap-2 mb-4">
@@ -522,14 +554,12 @@ export default function Market() {
         </div>
       </div>
 
-      {/* Price chart placeholder */}
+      {/* Price chart */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <h2 className="text-sm font-semibold text-white mb-3">
           Price History
         </h2>
-        <div className="h-48 bg-gray-800 rounded-lg flex items-center justify-center text-gray-600 text-sm border border-gray-700">
-          Price chart will be rendered here
-        </div>
+        <PriceChart data={priceHistory} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

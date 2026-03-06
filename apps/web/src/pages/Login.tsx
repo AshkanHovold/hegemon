@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth, ApiError } from "../context/AuthContext";
 
@@ -9,6 +9,8 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => { document.title = "Login - Hegemon"; }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

@@ -79,6 +79,9 @@ export const BUILDING_DISPLAY: Record<
   },
 };
 
+// Max building level
+export const MAX_BUILDING_LEVEL = 20;
+
 // Build time per level in ms (must match API: 5 minutes per level)
 export const BUILDING_TIME_PER_LEVEL = 5 * 60 * 1000;
 

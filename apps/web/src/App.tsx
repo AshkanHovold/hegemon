@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { GameProvider } from "./context/GameContext";
+import { ToastProvider } from "./components/Toast";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./components/Layout";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -13,6 +15,7 @@ import Market from "./pages/Market";
 import Alliance from "./pages/Alliance";
 import Rankings from "./pages/Rankings";
 import Profile from "./pages/Profile";
+import Help from "./pages/Help";
 import CreateNation from "./pages/CreateNation";
 import type { ReactNode } from "react";
 
@@ -101,6 +104,7 @@ function AppRoutes() {
         <Route path="alliance" element={<Alliance />} />
         <Route path="rankings" element={<Rankings />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="help" element={<Help />} />
       </Route>
     </Routes>
   );
@@ -110,7 +114,11 @@ export default function App() {
   return (
     <AuthProvider>
       <GameProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
+        </ToastProvider>
       </GameProvider>
     </AuthProvider>
   );

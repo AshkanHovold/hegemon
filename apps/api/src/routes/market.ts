@@ -27,6 +27,11 @@ interface TradesQuery {
   limit?: string;
 }
 
+interface PriceHistoryQuery {
+  commodity?: string;
+  period?: string;
+}
+
 interface CancelParams {
   id: string;
 }
@@ -153,6 +158,12 @@ export async function marketRoutes(app: FastifyInstance) {
       if (!quantity || quantity <= 0 || !Number.isInteger(quantity)) {
         return reply.status(400).send({ error: "Quantity must be a positive integer" });
       }
+      if (quantity > 10000) {
+        return reply.status(400).send({ error: "Quantity max is 10000" });
+      }
+      if (price > 100000) {
+        return reply.status(400).send({ error: "Price max is 100000" });
+      }
 
       const orderSide = side as OrderSide;
       const orderCommodity = commodity as Commodity;
@@ -218,161 +229,161 @@ export async function marketRoutes(app: FastifyInstance) {
         },
       });
 
-      // ── Matching engine ───────────────────────────────────
-      let remainingQty = quantity;
-      let totalMatchedQty = 0;
+      // ── Matching engine (wrapped in transaction for atomicity) ──
+      const txResult = await prisma.$transaction(async (tx) => {
+        let remainingQty = quantity;
+        let totalMatchedQty = 0;
 
-      if (orderSide === OrderSide.BUY) {
-        // Match against SELL orders at <= buy price, lowest ask first (price-time priority)
-        const matchable = await prisma.marketOrder.findMany({
-          where: {
-            roundId: round.id,
-            side: OrderSide.SELL,
-            commodity: orderCommodity,
-            price: { lte: price },
-            status: { in: [OrderStatus.OPEN, OrderStatus.PARTIAL] },
-            nationId: { not: nation.id }, // don't self-trade
-          },
-          orderBy: [{ price: "asc" }, { createdAt: "asc" }],
-        });
-
-        for (const sell of matchable) {
-          if (remainingQty <= 0) break;
-
-          const sellRemaining = sell.quantity - sell.filled;
-          const fillQty = Math.min(remainingQty, sellRemaining);
-          const fillPrice = sell.price; // execute at the resting order's price
-
-          // Update the sell order
-          const newSellFilled = sell.filled + fillQty;
-          const sellStatus =
-            newSellFilled >= sell.quantity ? OrderStatus.FILLED : OrderStatus.PARTIAL;
-
-          await prisma.marketOrder.update({
-            where: { id: sell.id },
-            data: {
-              filled: newSellFilled,
-              status: sellStatus,
-              ...(sellStatus === OrderStatus.FILLED ? { filledAt: new Date() } : {}),
+        if (orderSide === OrderSide.BUY) {
+          // Match against SELL orders at <= buy price, lowest ask first (price-time priority)
+          const matchable = await tx.marketOrder.findMany({
+            where: {
+              roundId: round.id,
+              side: OrderSide.SELL,
+              commodity: orderCommodity,
+              price: { lte: price },
+              status: { in: [OrderStatus.OPEN, OrderStatus.PARTIAL] },
+              nationId: { not: nation.id }, // don't self-trade
             },
+            orderBy: [{ price: "asc" }, { createdAt: "asc" }],
           });
 
-          // Transfer resources:
-          // Buyer gets the commodity
-          // Seller gets cash (at fill price, no fee)
-          const cashToSeller = fillPrice * fillQty;
+          for (const sell of matchable) {
+            if (remainingQty <= 0) break;
 
-          await prisma.nation.update({
-            where: { id: nation.id },
-            data: { [resourceField]: { increment: fillQty } },
-          });
+            const sellRemaining = sell.quantity - sell.filled;
+            const fillQty = Math.min(remainingQty, sellRemaining);
+            const fillPrice = sell.price; // execute at the resting order's price
 
-          await prisma.nation.update({
-            where: { id: sell.nationId },
-            data: { cash: { increment: cashToSeller } },
-          });
+            // Update the sell order
+            const newSellFilled = sell.filled + fillQty;
+            const sellStatus =
+              newSellFilled >= sell.quantity ? OrderStatus.FILLED : OrderStatus.PARTIAL;
 
-          // Refund buyer the difference if fill price < order price
-          // The buyer reserved (price * qty * 1.035) but only pays (fillPrice * fillQty * 1.035)
-          if (fillPrice < price) {
-            const refund = (price - fillPrice) * fillQty * (1 + MARKET_FEE);
-            await prisma.nation.update({
-              where: { id: nation.id },
-              data: { cash: { increment: refund } },
+            await tx.marketOrder.update({
+              where: { id: sell.id },
+              data: {
+                filled: newSellFilled,
+                status: sellStatus,
+                ...(sellStatus === OrderStatus.FILLED ? { filledAt: new Date() } : {}),
+              },
             });
-          }
 
-          remainingQty -= fillQty;
-          totalMatchedQty += fillQty;
+            // Transfer resources:
+            // Buyer gets the commodity
+            // Seller gets cash (at fill price, no fee)
+            const cashToSeller = fillPrice * fillQty;
+
+            await tx.nation.update({
+              where: { id: nation.id },
+              data: { [resourceField]: { increment: fillQty } },
+            });
+
+            await tx.nation.update({
+              where: { id: sell.nationId },
+              data: { cash: { increment: cashToSeller } },
+            });
+
+            // Refund buyer the difference if fill price < order price
+            // The buyer reserved (price * qty * 1.035) but only pays (fillPrice * fillQty * 1.035)
+            if (fillPrice < price) {
+              const refund = (price - fillPrice) * fillQty * (1 + MARKET_FEE);
+              await tx.nation.update({
+                where: { id: nation.id },
+                data: { cash: { increment: refund } },
+              });
+            }
+
+            remainingQty -= fillQty;
+            totalMatchedQty += fillQty;
+          }
+        } else {
+          // SELL order: match against BUY orders at >= sell price, highest bid first
+          const matchable = await tx.marketOrder.findMany({
+            where: {
+              roundId: round.id,
+              side: OrderSide.BUY,
+              commodity: orderCommodity,
+              price: { gte: price },
+              status: { in: [OrderStatus.OPEN, OrderStatus.PARTIAL] },
+              nationId: { not: nation.id },
+            },
+            orderBy: [{ price: "desc" }, { createdAt: "asc" }],
+          });
+
+          for (const buy of matchable) {
+            if (remainingQty <= 0) break;
+
+            const buyRemaining = buy.quantity - buy.filled;
+            const fillQty = Math.min(remainingQty, buyRemaining);
+            const fillPrice = buy.price; // execute at the resting order's price
+
+            // Update the buy order
+            const newBuyFilled = buy.filled + fillQty;
+            const buyStatus =
+              newBuyFilled >= buy.quantity ? OrderStatus.FILLED : OrderStatus.PARTIAL;
+
+            await tx.marketOrder.update({
+              where: { id: buy.id },
+              data: {
+                filled: newBuyFilled,
+                status: buyStatus,
+                ...(buyStatus === OrderStatus.FILLED ? { filledAt: new Date() } : {}),
+              },
+            });
+
+            // Transfer resources:
+            // Buyer gets the commodity
+            // Seller gets cash at fill price
+            const cashToSeller = fillPrice * fillQty;
+
+            await tx.nation.update({
+              where: { id: buy.nationId },
+              data: { [resourceField]: { increment: fillQty } },
+            });
+
+            await tx.nation.update({
+              where: { id: nation.id },
+              data: { cash: { increment: cashToSeller } },
+            });
+
+            // If the resting buy order was at a higher price than the sell, the buyer
+            // already reserved cash at their price. The difference stays as fee savings
+            // (buyer paid less than max). Refund the difference to the buyer.
+            if (fillPrice > price) {
+              // Actually the buyer reserved at buy.price. They pay fillPrice = buy.price.
+              // No refund needed in this direction since fillPrice === buy.price.
+            }
+
+            remainingQty -= fillQty;
+            totalMatchedQty += fillQty;
+          }
         }
-      } else {
-        // SELL order: match against BUY orders at >= sell price, highest bid first
-        const matchable = await prisma.marketOrder.findMany({
-          where: {
-            roundId: round.id,
-            side: OrderSide.BUY,
-            commodity: orderCommodity,
-            price: { gte: price },
-            status: { in: [OrderStatus.OPEN, OrderStatus.PARTIAL] },
-            nationId: { not: nation.id },
+
+        // Update the new order's fill status
+        const newFilled = totalMatchedQty;
+        let newStatus: OrderStatus;
+        if (newFilled >= quantity) {
+          newStatus = OrderStatus.FILLED;
+        } else if (newFilled > 0) {
+          newStatus = OrderStatus.PARTIAL;
+        } else {
+          newStatus = OrderStatus.OPEN;
+        }
+
+        const updatedOrder = await tx.marketOrder.update({
+          where: { id: order.id },
+          data: {
+            filled: newFilled,
+            status: newStatus,
+            ...(newStatus === OrderStatus.FILLED ? { filledAt: new Date() } : {}),
           },
-          orderBy: [{ price: "desc" }, { createdAt: "asc" }],
         });
 
-        for (const buy of matchable) {
-          if (remainingQty <= 0) break;
-
-          const buyRemaining = buy.quantity - buy.filled;
-          const fillQty = Math.min(remainingQty, buyRemaining);
-          const fillPrice = buy.price; // execute at the resting order's price
-
-          // Update the buy order
-          const newBuyFilled = buy.filled + fillQty;
-          const buyStatus =
-            newBuyFilled >= buy.quantity ? OrderStatus.FILLED : OrderStatus.PARTIAL;
-
-          await prisma.marketOrder.update({
-            where: { id: buy.id },
-            data: {
-              filled: newBuyFilled,
-              status: buyStatus,
-              ...(buyStatus === OrderStatus.FILLED ? { filledAt: new Date() } : {}),
-            },
-          });
-
-          // Transfer resources:
-          // Buyer gets the commodity
-          // Seller gets cash at fill price
-          const cashToSeller = fillPrice * fillQty;
-
-          await prisma.nation.update({
-            where: { id: buy.nationId },
-            data: { [resourceField]: { increment: fillQty } },
-          });
-
-          await prisma.nation.update({
-            where: { id: nation.id },
-            data: { cash: { increment: cashToSeller } },
-          });
-
-          // If the resting buy order was at a higher price than the sell, the buyer
-          // already reserved cash at their price. The difference stays as fee savings
-          // (buyer paid less than max). Refund the difference to the buyer.
-          if (fillPrice > price) {
-            // Actually the buyer reserved at buy.price. They pay fillPrice = buy.price.
-            // No refund needed in this direction since fillPrice === buy.price.
-          }
-
-          remainingQty -= fillQty;
-          totalMatchedQty += fillQty;
-        }
-      }
-
-      // Update the new order's fill status
-      const newFilled = totalMatchedQty;
-      let newStatus: OrderStatus;
-      if (newFilled >= quantity) {
-        newStatus = OrderStatus.FILLED;
-      } else if (newFilled > 0) {
-        newStatus = OrderStatus.PARTIAL;
-      } else {
-        newStatus = OrderStatus.OPEN;
-      }
-
-      const updatedOrder = await prisma.marketOrder.update({
-        where: { id: order.id },
-        data: {
-          filled: newFilled,
-          status: newStatus,
-          ...(newStatus === OrderStatus.FILLED ? { filledAt: new Date() } : {}),
-        },
+        return { updatedOrder, totalMatchedQty, remainingQty, newStatus };
       });
 
-      // If the order was fully filled and it was a BUY, refund the unused reserved cash
-      if (orderSide === OrderSide.BUY && remainingQty > 0 && newStatus !== OrderStatus.OPEN) {
-        // Partial fill: some cash was reserved but won't be used unless more matches come later.
-        // The remaining reserved cash stays locked for the resting order.
-      }
+      const { updatedOrder, totalMatchedQty, newStatus } = txResult;
 
       return reply.status(201).send({
         order: {
@@ -492,6 +503,95 @@ export async function marketRoutes(app: FastifyInstance) {
           filledAt: t.filledAt,
         })),
       };
+    }
+  );
+
+  // ── GET /market/price-history  - Price history by commodity ────
+  app.get<{ Querystring: PriceHistoryQuery }>(
+    "/market/price-history",
+    async (req, reply) => {
+      const commodity = req.query.commodity as Commodity | undefined;
+      const period = req.query.period || "24h";
+
+      if (!commodity || !TRADEABLE_COMMODITIES.includes(commodity)) {
+        return reply.status(400).send({
+          error: "Invalid or missing commodity",
+          valid: TRADEABLE_COMMODITIES,
+        });
+      }
+
+      // Parse period to ms
+      let periodMs: number;
+      switch (period) {
+        case "1h":
+          periodMs = 60 * 60 * 1000;
+          break;
+        case "6h":
+          periodMs = 6 * 60 * 60 * 1000;
+          break;
+        case "24h":
+          periodMs = 24 * 60 * 60 * 1000;
+          break;
+        case "7d":
+          periodMs = 7 * 24 * 60 * 60 * 1000;
+          break;
+        default:
+          periodMs = 24 * 60 * 60 * 1000;
+      }
+
+      const since = new Date(Date.now() - periodMs);
+
+      const round = await prisma.round.findFirst({ where: { active: true } });
+      if (!round) return reply.status(404).send({ error: "No active round" });
+
+      // Fetch filled orders for this commodity in the time range
+      const filledOrders = await prisma.marketOrder.findMany({
+        where: {
+          roundId: round.id,
+          commodity: commodity,
+          status: OrderStatus.FILLED,
+          filledAt: { gte: since },
+        },
+        orderBy: { filledAt: "asc" },
+        select: {
+          price: true,
+          quantity: true,
+          filledAt: true,
+        },
+      });
+
+      // Group by 30-min buckets
+      const BUCKET_MS = 30 * 60 * 1000;
+      const buckets = new Map<
+        number,
+        { totalPrice: number; totalQty: number }
+      >();
+
+      for (const order of filledOrders) {
+        if (!order.filledAt) continue;
+        const bucketTs =
+          Math.floor(order.filledAt.getTime() / BUCKET_MS) * BUCKET_MS;
+        const existing = buckets.get(bucketTs) || {
+          totalPrice: 0,
+          totalQty: 0,
+        };
+        existing.totalPrice += order.price * order.quantity;
+        existing.totalQty += order.quantity;
+        buckets.set(bucketTs, existing);
+      }
+
+      const history = Array.from(buckets.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([ts, data]) => ({
+          timestamp: new Date(ts).toISOString(),
+          avgPrice:
+            data.totalQty > 0
+              ? Math.round((data.totalPrice / data.totalQty) * 100) / 100
+              : 0,
+          volume: data.totalQty,
+        }));
+
+      return reply.send({ commodity, period, history });
     }
   );
 }

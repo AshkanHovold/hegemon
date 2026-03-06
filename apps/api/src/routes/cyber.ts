@@ -105,6 +105,10 @@ export async function cyberRoutes(app: FastifyInstance) {
     const round = await prisma.round.findFirst({ where: { active: true } });
     if (!round) return reply.status(404).send({ error: "No active round" });
 
+    if (round.phase === "GROWTH") {
+      return reply.status(400).send({ error: "Cyber operations are not allowed during the Growth phase" });
+    }
+
     const nation = await prisma.nation.findUnique({
       where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
       include: { buildings: true },
@@ -132,6 +136,13 @@ export async function cyberRoutes(app: FastifyInstance) {
     }
     if (target.id === nation.id) {
       return reply.status(400).send({ error: "Cannot target yourself" });
+    }
+
+    // Shield check (except RECON_SCAN which is passive)
+    if (type !== "RECON_SCAN" && target.shieldUntil && new Date(target.shieldUntil) > new Date()) {
+      return reply.status(400).send({
+        error: `Target nation is shielded until ${new Date(target.shieldUntil).toISOString()}`,
+      });
     }
 
     // Check if cyber center is built
@@ -223,7 +234,83 @@ export async function cyberRoutes(app: FastifyInstance) {
           result = { ...result, drained };
           break;
         }
-        // Other ops store the effect for tick processing
+        case "SYSTEM_HACK": {
+          await prisma.nation.update({
+            where: { id: target.id },
+            data: { shieldUntil: null },
+          });
+          result = { ...result, effect: "Shield removed from target" };
+          break;
+        }
+        case "INFRASTRUCTURE_SABOTAGE": {
+          const regenReduction = Math.floor(target.energyRegen * 0.25);
+          await prisma.nation.update({
+            where: { id: target.id },
+            data: { energyRegen: { decrement: regenReduction } },
+          });
+          result = { ...result, regenReduced: regenReduction };
+          break;
+        }
+        case "PROPAGANDA": {
+          const civLoss = Math.floor(target.civilians * 0.05);
+          await prisma.nation.update({
+            where: { id: target.id },
+            data: {
+              civilians: { decrement: civLoss },
+              population: { decrement: civLoss },
+            },
+          });
+          result = { ...result, populationLost: civLoss };
+          break;
+        }
+        case "MARKET_MANIPULATION": {
+          const stolenCash = Math.floor(target.cash * 0.05);
+          await prisma.$transaction([
+            prisma.nation.update({
+              where: { id: target.id },
+              data: { cash: { decrement: stolenCash } },
+            }),
+            prisma.nation.update({
+              where: { id: nation.id },
+              data: { cash: { increment: stolenCash } },
+            }),
+          ]);
+          result = { ...result, cashStolen: stolenCash };
+          break;
+        }
+        case "NETWORK_INFILTRATION": {
+          const targetWithDetails = await prisma.nation.findUnique({
+            where: { id: target.id },
+            include: {
+              troops: true,
+              buildings: true,
+              allianceMembership: { include: { alliance: { select: { name: true, tag: true } } } },
+            },
+          });
+          const troopCounts: Record<string, number> = {};
+          const buildingLevels: Record<string, number> = {};
+          if (targetWithDetails) {
+            for (const t of targetWithDetails.troops) {
+              troopCounts[t.type] = t.count;
+            }
+            for (const b of targetWithDetails.buildings) {
+              buildingLevels[b.type] = b.level;
+            }
+          }
+          result = {
+            ...result,
+            targetName: target.name,
+            alliance: targetWithDetails?.allianceMembership ?? null,
+            buildingLevels,
+            troopCounts,
+            cash: target.cash,
+            materials: target.materials,
+            techPoints: target.techPoints,
+            population: target.population,
+            military: target.military,
+          };
+          break;
+        }
         default:
           result = { ...result, effect: type };
       }

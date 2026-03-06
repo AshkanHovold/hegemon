@@ -3,7 +3,11 @@ import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
 import { TROOP_STATS, ALL_UNIT_TYPES } from "../lib/gameConstants";
 import { useCountdown } from "../hooks/useCountdown";
+import { formatScore, timeAgo } from "../lib/format";
+import { useToast } from "../components/Toast";
+import ConfirmDialog from "../components/ConfirmDialog";
 import GameIcon, { UNIT_ICON_KEY } from "../components/GameIcon";
+import HelpTooltip from "../components/HelpTooltip";
 import type {
   UnitType,
   RankedNation,
@@ -52,24 +56,9 @@ function TrainProgress({
   );
 }
 
-function formatScore(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
-  return n.toString();
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
 export default function Military() {
   const { nation, refreshNation } = useGame();
+  const { toast } = useToast();
   const [selectedUnit, setSelectedUnit] = useState<UnitType>("INFANTRY");
   const [trainQuantity, setTrainQuantity] = useState(10);
   const [error, setError] = useState("");
@@ -86,6 +75,18 @@ export default function Military() {
     (AttackResult & { defenderName: string }) | null
   >(null);
 
+  // Troop selection for attack
+  const [attackTroops, setAttackTroops] = useState<Record<UnitType, number>>({
+    INFANTRY: 0,
+    ARMOR: 0,
+    AIR_FORCE: 0,
+    DRONES: 0,
+    NAVY: 0,
+  });
+
+  // Confirmation dialog
+  const [showConfirm, setShowConfirm] = useState(false);
+
   // Attack history
   const [attackLog, setAttackLog] = useState<AttackLogEntry[]>([]);
 
@@ -97,7 +98,7 @@ export default function Military() {
       );
       setNations(data.rankings);
     } catch {
-      // silently fail — not critical
+      // silently fail
     }
   }, []);
 
@@ -111,6 +112,8 @@ export default function Military() {
       // silently fail
     }
   }, []);
+
+  useEffect(() => { document.title = "Military - Hegemon"; }, []);
 
   useEffect(() => {
     fetchNations();
@@ -152,6 +155,12 @@ export default function Military() {
     materials: selectedStats.costMaterials * trainQuantity,
   };
 
+  // Compute selected attack power
+  const selectedAtkPower = ALL_UNIT_TYPES.reduce((sum, type) => {
+    return sum + (attackTroops[type] || 0) * TROOP_STATS[type].atk;
+  }, 0);
+  const totalSelectedTroops = Object.values(attackTroops).reduce((s, v) => s + v, 0);
+
   // Filter nations for attack picker (exclude self)
   const filteredNations = nations
     .filter((n) => n.id !== nation.id)
@@ -162,6 +171,19 @@ export default function Military() {
         n.username.toLowerCase().includes(searchQuery.toLowerCase()),
     );
 
+  function setAllTroops() {
+    const newTroops = { ...attackTroops };
+    for (const type of ALL_UNIT_TYPES) {
+      const troop = troopMap.get(type);
+      newTroops[type] = troop?.count ?? 0;
+    }
+    setAttackTroops(newTroops);
+  }
+
+  function clearAllTroops() {
+    setAttackTroops({ INFANTRY: 0, ARMOR: 0, AIR_FORCE: 0, DRONES: 0, NAVY: 0 });
+  }
+
   async function handleTrain() {
     setError("");
     setTraining(true);
@@ -170,6 +192,7 @@ export default function Military() {
         type: selectedUnit,
         count: trainQuantity,
       });
+      toast("success", `Started training ${trainQuantity} ${TROOP_STATS[selectedUnit].name}`);
       await refreshNation();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -182,22 +205,32 @@ export default function Military() {
     }
   }
 
-  async function handleAttack() {
+  async function executeAttack() {
     if (!selectedTarget) return;
     setError("");
     setAttacking(true);
     setLastResult(null);
+    setShowConfirm(false);
     try {
       const data = await api.post<{
         attack: AttackResult;
         defender: { name: string };
-      }>("/nation/attack", { defenderId: selectedTarget.id });
+      }>("/nation/attack", {
+        defenderId: selectedTarget.id,
+        troops: attackTroops,
+      });
       setLastResult({ ...data.attack, defenderName: data.defender.name });
+      if (data.attack.attackerWon) {
+        toast("success", `Victory against ${data.defender.name}!`);
+      } else {
+        toast("warning", `Defeat against ${data.defender.name}`);
+      }
       await refreshNation();
       fetchNations();
       fetchAttackLog();
     } catch (err) {
       if (err instanceof ApiError) {
+        toast("error", err.message);
         setError(err.message);
       } else {
         setError("Attack failed");
@@ -205,6 +238,11 @@ export default function Military() {
     } finally {
       setAttacking(false);
     }
+  }
+
+  function handleAttackClick() {
+    if (!selectedTarget || totalSelectedTroops === 0) return;
+    setShowConfirm(true);
   }
 
   const missileDef = nation.buildings.find(
@@ -215,7 +253,9 @@ export default function Military() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white">Military Command</h1>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          Military Command <HelpTooltip articleId="troops-overview" size="md" />
+        </h1>
         <p className="text-gray-500 text-sm mt-1">
           Train troops, launch attacks, and defend your nation
         </p>
@@ -245,7 +285,11 @@ export default function Military() {
         >
           <div className="flex items-center gap-3 mb-2">
             <span className="text-2xl">
-              {lastResult.attackerWon ? "\u2694\uFE0F" : "\uD83D\uDEE1\uFE0F"}
+              {lastResult.attackerWon ? (
+                <GameIcon name="unit-infantry" size={28} />
+              ) : (
+                <GameIcon name="building-missile-defense" size={28} />
+              )}
             </span>
             <div>
               <h3
@@ -416,8 +460,8 @@ export default function Military() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Training section */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-white mb-4">
-            Train Units
+          <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+            Train Units <HelpTooltip articleId="training" />
           </h2>
 
           <div className="space-y-4">
@@ -479,7 +523,7 @@ export default function Military() {
             <button
               onClick={handleTrain}
               disabled={training}
-              className="w-full bg-red-600 hover:bg-red-500 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg transition-colors text-sm"
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg transition-colors text-sm"
             >
               {training
                 ? "Training..."
@@ -528,14 +572,14 @@ export default function Military() {
           </div>
         </div>
 
-        {/* Attack section — Nation Picker */}
+        {/* Attack section */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-white mb-4">
-            Launch Attack
+          <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+            Launch Attack <HelpTooltip articleId="combat-mechanics" />
           </h2>
 
           <div className="space-y-4">
-            {/* Search input */}
+            {/* Target search */}
             <div>
               <label className="block text-xs text-gray-500 mb-1.5">
                 Select Target
@@ -553,7 +597,7 @@ export default function Military() {
             </div>
 
             {/* Nation list */}
-            <div className="max-h-48 overflow-y-auto space-y-1 scrollbar-thin">
+            <div className="max-h-36 overflow-y-auto space-y-1 scrollbar-thin">
               {filteredNations.length === 0 ? (
                 <div className="text-xs text-gray-600 py-2 text-center">
                   {nations.length === 0
@@ -605,12 +649,86 @@ export default function Military() {
               )}
             </div>
 
+            {/* Troop selection for attack */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-gray-500 font-medium">
+                  Select Troops to Send
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={setAllTroops}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    Send All
+                  </button>
+                  <button
+                    onClick={clearAllTroops}
+                    className="text-xs text-gray-500 hover:text-gray-400"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {troopData.filter((t) => t.count > 0).map((t) => (
+                  <div
+                    key={t.type}
+                    className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2"
+                  >
+                    <GameIcon name={t.iconKey} size={18} />
+                    <span className="text-xs text-gray-300 w-16">{t.name}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={t.count}
+                      value={attackTroops[t.type as UnitType] || 0}
+                      onChange={(e) =>
+                        setAttackTroops((prev) => ({
+                          ...prev,
+                          [t.type]: Number(e.target.value),
+                        }))
+                      }
+                      className="flex-1 h-1.5 accent-red-500"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={t.count}
+                      value={attackTroops[t.type as UnitType] || 0}
+                      onChange={(e) =>
+                        setAttackTroops((prev) => ({
+                          ...prev,
+                          [t.type]: Math.min(t.count, Math.max(0, Number(e.target.value) || 0)),
+                        }))
+                      }
+                      className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100 text-right tabular-nums focus:outline-none focus:border-red-500"
+                    />
+                    <span className="text-xs text-gray-600 w-12 text-right">
+                      /{t.count}
+                    </span>
+                  </div>
+                ))}
+                {troopData.every((t) => t.count === 0) && (
+                  <div className="text-xs text-gray-600 text-center py-2">
+                    No troops available
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Attack info panel */}
             <div className="bg-gray-800 rounded-lg p-3 text-xs text-gray-400">
               <div className="flex justify-between">
-                <span>Your attack power:</span>
-                <span className="text-red-400">
-                  {totalAtk.toLocaleString()}
+                <span>Selected attack power:</span>
+                <span className={`font-semibold ${selectedAtkPower > 0 ? "text-red-400" : "text-gray-600"}`}>
+                  {selectedAtkPower.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span>Troops committed:</span>
+                <span className="text-gray-300">
+                  {totalSelectedTroops.toLocaleString()}
                 </span>
               </div>
               {selectedTarget && (
@@ -625,21 +743,21 @@ export default function Military() {
                 <span>Energy cost:</span>
                 <span className="text-blue-400">25 energy</span>
               </div>
-              {selectedTarget && (
+              {selectedTarget && selectedAtkPower > 0 && (
                 <div className="flex justify-between mt-1">
                   <span>Odds:</span>
                   <span
                     className={
-                      totalAtk > selectedTarget.military
+                      selectedAtkPower > selectedTarget.military
                         ? "text-emerald-400"
-                        : totalAtk > selectedTarget.military * 0.7
+                        : selectedAtkPower > selectedTarget.military * 0.7
                           ? "text-amber-400"
                           : "text-red-400"
                     }
                   >
-                    {totalAtk > selectedTarget.military
+                    {selectedAtkPower > selectedTarget.military
                       ? "Favorable"
-                      : totalAtk > selectedTarget.military * 0.7
+                      : selectedAtkPower > selectedTarget.military * 0.7
                         ? "Risky"
                         : "Unfavorable"}
                   </span>
@@ -648,15 +766,17 @@ export default function Military() {
             </div>
 
             <button
-              onClick={handleAttack}
-              disabled={!selectedTarget || attacking || totalTroops === 0}
+              onClick={handleAttackClick}
+              disabled={!selectedTarget || attacking || totalSelectedTroops === 0}
               className="w-full bg-red-700 hover:bg-red-600 disabled:bg-red-700/50 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg transition-colors text-sm border border-red-600"
             >
               {attacking
                 ? "Attacking..."
-                : selectedTarget
-                  ? `Attack ${selectedTarget.name}`
-                  : "Select a target"}
+                : !selectedTarget
+                  ? "Select a target"
+                  : totalSelectedTroops === 0
+                    ? "Select troops to send"
+                    : `Attack ${selectedTarget.name}`}
             </button>
           </div>
         </div>
@@ -746,6 +866,17 @@ export default function Military() {
           </div>
         </div>
       )}
+
+      {/* Attack Confirmation Dialog */}
+      <ConfirmDialog
+        open={showConfirm}
+        title="Confirm Attack"
+        message={`Send ${totalSelectedTroops.toLocaleString()} troops (${selectedAtkPower.toLocaleString()} ATK) against ${selectedTarget?.name ?? "target"}? This costs 25 energy.`}
+        confirmLabel="Launch Attack"
+        variant="danger"
+        onConfirm={executeAttack}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }

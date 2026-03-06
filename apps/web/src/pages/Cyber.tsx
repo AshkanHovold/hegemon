@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
+import { timeRemaining, timeAgo } from "../lib/format";
 import GameIcon, { CYBER_ICON_KEY } from "../components/GameIcon";
+import HelpTooltip from "../components/HelpTooltip";
 import type { RankedNation } from "../lib/types";
 
 type CyberOpType =
@@ -40,7 +42,7 @@ const CYBER_OPS: {
     type: "SYSTEM_HACK",
     name: "System Hack",
     energy: 15,
-    desc: "Disable target's defenses temporarily before an attack.",
+    desc: "Remove target's beginner shield, exposing them to attacks.",
     cooldown: "30 min",
     category: "Sabotage",
     color: "border-red-500/20",
@@ -62,7 +64,7 @@ const CYBER_OPS: {
     type: "MARKET_MANIPULATION",
     name: "Market Manipulation",
     energy: 20,
-    desc: "Artificially inflate/deflate market prices for 30 minutes.",
+    desc: "Steal 5% of target's cash reserves directly into your treasury.",
     cooldown: "1 hr",
     category: "Economic",
     color: "border-emerald-500/20",
@@ -84,7 +86,7 @@ const CYBER_OPS: {
     type: "NETWORK_INFILTRATION",
     name: "Network Infiltration",
     energy: 15,
-    desc: "See target's alliance plans for a period. Requires stealth.",
+    desc: "Full intel on target: troops, buildings, resources, and alliance info.",
     cooldown: "30 min",
     category: "Intelligence",
     color: "border-violet-500/20",
@@ -95,7 +97,7 @@ const CYBER_OPS: {
     type: "PROPAGANDA",
     name: "Propaganda Campaign",
     energy: 15,
-    desc: "Reduce target's population morale, slowing growth by 15%.",
+    desc: "Kill 5% of target's civilian population through unrest and chaos.",
     cooldown: "45 min",
     category: "PsyOps",
     color: "border-pink-500/20",
@@ -106,7 +108,7 @@ const CYBER_OPS: {
     type: "INFRASTRUCTURE_SABOTAGE",
     name: "Infrastructure Sabotage",
     energy: 25,
-    desc: "Reduce target's energy regen for a period.",
+    desc: "Permanently reduce target's energy regen rate by 25%.",
     cooldown: "1 hr",
     category: "Sabotage",
     color: "border-orange-500/20",
@@ -132,27 +134,6 @@ interface DefenseEntry {
   attacker: { name: string };
 }
 
-function timeRemaining(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const diff = new Date(dateStr).getTime() - Date.now();
-  if (diff <= 0) return "Expired";
-  const minutes = Math.floor(diff / 60_000);
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
 function opTypeName(type: string): string {
   const op = CYBER_OPS.find((o) => o.type === type);
   return op?.name ?? type.replace(/_/g, " ").toLowerCase();
@@ -171,6 +152,8 @@ export default function Cyber() {
   // Nation picker state
   const [nations, setNations] = useState<RankedNation[]>([]);
   const [nationSearch, setNationSearch] = useState("");
+
+  useEffect(() => { document.title = "Cyber Ops - Hegemon"; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,14 +227,17 @@ export default function Cyber() {
         result: { success: boolean; [key: string]: unknown };
       }>("/nation/cyber/launch", { type, targetId: selectedTarget.id });
       if (data.result.success) {
+        const r = data.result;
+        let detail = "";
+        if (r.stolen) detail = ` Stole ${r.stolen} tech points.`;
+        if (r.drained) detail = ` Drained ${r.drained} energy.`;
+        if (r.cashStolen) detail = ` Stole $${Number(r.cashStolen).toLocaleString()} cash.`;
+        if (r.populationLost) detail = ` Target lost ${Number(r.populationLost).toLocaleString()} civilians.`;
+        if (r.regenReduced) detail = ` Reduced energy regen by ${r.regenReduced}.`;
+        if (r.effect === "Shield removed from target") detail = ` Target's shield has been removed.`;
+        if (r.troopCounts) detail = ` Full intel gathered on target.`;
         setResult(
-          `${opTypeName(type)} succeeded against ${selectedTarget.name}!` +
-            (data.result.stolen
-              ? ` Stole ${data.result.stolen} tech points.`
-              : "") +
-            (data.result.drained
-              ? ` Drained ${data.result.drained} energy.`
-              : "")
+          `${opTypeName(type)} succeeded against ${selectedTarget.name}!${detail}`
         );
       } else {
         setResult(`${opTypeName(type)} failed against ${selectedTarget.name}. Target's defenses held.`);
@@ -279,7 +265,7 @@ export default function Cyber() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Cyber Operations</h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">Cyber Operations <HelpTooltip articleId="cyber-overview" size="md" /></h1>
         <p className="text-gray-500 text-sm mt-1">
           Execute covert operations against enemy nations
         </p>

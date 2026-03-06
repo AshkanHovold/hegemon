@@ -6,6 +6,13 @@ import type { UnitType } from "../generated/prisma/enums.js";
 
 interface AttackBody {
   defenderId: string;
+  troops: {
+    INFANTRY?: number;
+    ARMOR?: number;
+    AIR_FORCE?: number;
+    DRONES?: number;
+    NAVY?: number;
+  };
 }
 
 const UNIT_TYPES: UnitType[] = [
@@ -34,16 +41,25 @@ export async function attackRoutes(app: FastifyInstance) {
   app.post<{ Body: AttackBody }>(
     "/nation/attack",
     async (req, reply) => {
-      const { defenderId } = req.body;
+      const { defenderId, troops: requestedTroops } = req.body;
 
       if (!defenderId) {
         return reply.status(400).send({ error: "defenderId is required" });
+      }
+
+      if (!requestedTroops || typeof requestedTroops !== "object") {
+        return reply.status(400).send({ error: "troops object is required" });
       }
 
       // Get active round
       const round = await prisma.round.findFirst({ where: { active: true } });
       if (!round) {
         return reply.status(404).send({ error: "No active round" });
+      }
+
+      // Round phase enforcement
+      if (round.phase === "GROWTH") {
+        return reply.status(400).send({ error: "Attacks are not allowed during the Growth phase" });
       }
 
       // Get attacker nation
@@ -76,6 +92,13 @@ export async function attackRoutes(app: FastifyInstance) {
           .send({ error: "Target nation is not in the active round" });
       }
 
+      // Beginner shield check
+      if (defender.shieldUntil && new Date(defender.shieldUntil) > new Date()) {
+        return reply.status(400).send({
+          error: `Target nation is shielded until ${new Date(defender.shieldUntil).toISOString()}`,
+        });
+      }
+
       // Check energy
       if (attacker.energy < ENERGY_COSTS.ATTACK) {
         return reply.status(400).send({
@@ -85,14 +108,55 @@ export async function attackRoutes(app: FastifyInstance) {
         });
       }
 
-      // Check attacker has any troops
-      const atkTroops = attacker.troops.filter((t) => t.count > 0);
-      if (atkTroops.length === 0) {
-        return reply.status(400).send({ error: "You have no troops to attack with" });
+      // Validate troop selection
+      const forcesSent: Record<string, number> = {};
+      let hasTroops = false;
+      for (const ut of UNIT_TYPES) {
+        const requested = requestedTroops[ut as keyof typeof requestedTroops] ?? 0;
+        if (!Number.isInteger(requested) || requested < 0) {
+          return reply.status(400).send({ error: `Invalid troop count for ${ut}` });
+        }
+        const ownedTroop = attacker.troops.find((t) => t.type === ut);
+        const owned = ownedTroop?.count ?? 0;
+        if (requested > owned) {
+          return reply.status(400).send({
+            error: `Not enough ${ut}: have ${owned}, requested ${requested}`,
+          });
+        }
+        forcesSent[ut] = requested;
+        if (requested > 0) hasTroops = true;
+      }
+
+      if (!hasTroops) {
+        return reply.status(400).send({ error: "At least one troop type must have count > 0" });
+      }
+
+      // Attack cooldown: check most recent attack from this attacker to this defender
+      const ATTACK_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+      const lastAttack = await prisma.attack.findFirst({
+        where: { attackerId: attacker.id, defenderId: defender.id },
+        orderBy: { createdAt: "desc" },
+      });
+      if (lastAttack) {
+        const elapsed = Date.now() - lastAttack.createdAt.getTime();
+        if (elapsed < ATTACK_COOLDOWN_MS) {
+          const remainingMs = ATTACK_COOLDOWN_MS - elapsed;
+          const remainingSec = Math.ceil(remainingMs / 1000);
+          return reply.status(429).send({
+            error: `Attack cooldown - wait ${remainingSec}s before attacking this nation again`,
+            retryAfter: remainingSec,
+          });
+        }
       }
 
       // ── Combat resolution ──────────────────────────────────────────────
-      const attackPower = totalPower(attacker.troops, "atk");
+      // Build selected troop array for attack power calculation
+      const selectedTroops = UNIT_TYPES.map((ut) => ({
+        type: ut,
+        count: forcesSent[ut],
+      }));
+
+      const attackPower = totalPower(selectedTroops, "atk");
       let defensePower = totalPower(defender.troops, "def");
 
       // Fortification bonus from MISSILE_DEFENSE
@@ -116,16 +180,13 @@ export async function attackRoutes(app: FastifyInstance) {
       const atkLossRate = attackerWon ? winnerLossRate : loserLossRate;
       const defLossRate = attackerWon ? loserLossRate : winnerLossRate;
 
-      // Calculate per-unit losses
+      // Calculate per-unit losses (attacker losses from SELECTED troops only)
       const attackerLosses: Record<string, number> = {};
       const defenderLosses: Record<string, number> = {};
 
       for (const ut of UNIT_TYPES) {
-        const atkTroop = attacker.troops.find((t) => t.type === ut);
+        attackerLosses[ut] = Math.floor(forcesSent[ut] * atkLossRate);
         const defTroop = defender.troops.find((t) => t.type === ut);
-        attackerLosses[ut] = atkTroop
-          ? Math.floor(atkTroop.count * atkLossRate)
-          : 0;
         defenderLosses[ut] = defTroop
           ? Math.floor(defTroop.count * defLossRate)
           : 0;
@@ -138,19 +199,15 @@ export async function attackRoutes(app: FastifyInstance) {
         const lootRate = 0.05 + Math.random() * 0.1;
         lootCash = Math.floor(defender.cash * lootRate);
         lootMaterials = Math.floor(defender.materials * lootRate);
-      }
-
-      // Record forces sent
-      const forcesSent: Record<string, number> = {};
-      for (const ut of UNIT_TYPES) {
-        const troop = attacker.troops.find((t) => t.type === ut);
-        forcesSent[ut] = troop?.count ?? 0;
+        // Clamp to non-negative and to defender's actual resources
+        lootCash = Math.max(0, Math.min(lootCash, defender.cash));
+        lootMaterials = Math.max(0, Math.min(lootMaterials, defender.materials));
       }
 
       // ── Apply in transaction ───────────────────────────────────────────
       const ops: any[] = [];
 
-      // Deduct attacker energy
+      // Deduct attacker energy and add loot
       ops.push(
         prisma.nation.update({
           where: { id: attacker.id },
@@ -175,15 +232,17 @@ export async function attackRoutes(app: FastifyInstance) {
         );
       }
 
-      // Apply troop losses for attacker
+      // Attacker troops: deduct sent, then add back survivors (sent - losses)
       for (const ut of UNIT_TYPES) {
-        if (attackerLosses[ut] > 0) {
+        if (forcesSent[ut] > 0) {
           const troop = attacker.troops.find((t) => t.type === ut);
           if (troop) {
+            const losses = attackerLosses[ut];
+            // Net change: subtract losses only (sent - survivors = losses)
             ops.push(
               prisma.troop.update({
                 where: { id: troop.id },
-                data: { count: { decrement: attackerLosses[ut] } },
+                data: { count: { decrement: losses } },
               }),
             );
           }
@@ -236,6 +295,7 @@ export async function attackRoutes(app: FastifyInstance) {
           attackerWon,
           attackPower: Math.round(effectiveAtk),
           defensePower,
+          forcesSent,
           attackerLosses,
           defenderLosses,
           lootCash,

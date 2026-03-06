@@ -1,15 +1,58 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useGame } from "../context/GameContext";
 import { useAuth } from "../context/AuthContext";
-import { calculateProductionRates } from "../lib/gameConstants";
+import { calculateProductionRates, BUILDING_DISPLAY, TROOP_STATS, BUILDING_TIME_PER_LEVEL } from "../lib/gameConstants";
+import { useCountdown } from "../hooks/useCountdown";
 import { api } from "../lib/api";
-import GameIcon from "../components/GameIcon";
+import { formatNumber } from "../lib/format";
+import GameIcon, { UNIT_ICON_KEY } from "../components/GameIcon";
+import HelpTooltip from "../components/HelpTooltip";
+import type { Building, Troop, UnitType } from "../lib/types";
 
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
-  return Math.floor(n).toLocaleString();
+function ActiveBuild({ building }: { building: Building }) {
+  const display = BUILDING_DISPLAY[building.type];
+  const startTime = building.buildsAt
+    ? new Date(new Date(building.buildsAt).getTime() - BUILDING_TIME_PER_LEVEL * building.level).toISOString()
+    : null;
+  const { percent, label } = useCountdown(building.buildsAt, startTime);
+  return (
+    <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
+      <GameIcon name={display.iconKey} size={24} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm text-gray-200">{display.name} {"\u2192"} Lv.{building.level}</span>
+          <span className="text-xs text-amber-400 font-mono tabular-nums">{label}</span>
+        </div>
+        <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+          <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${percent ?? 0}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActiveTrain({ troop }: { troop: Troop }) {
+  const stats = TROOP_STATS[troop.type];
+  const iconKey = UNIT_ICON_KEY[troop.type] ?? "unit-infantry";
+  const startTime = troop.trainsAt
+    ? new Date(new Date(troop.trainsAt).getTime() - stats.trainTimeMs).toISOString()
+    : null;
+  const { percent, label } = useCountdown(troop.trainsAt, startTime);
+  return (
+    <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
+      <GameIcon name={iconKey} size={24} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm text-gray-200">Training {troop.training.toLocaleString()} {stats.name}</span>
+          <span className="text-xs text-red-400 font-mono tabular-nums">{label}</span>
+        </div>
+        <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+          <div className="h-full bg-red-500 rounded-full transition-all" style={{ width: `${percent ?? 0}%` }} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const QUICK_ACTIONS = [
@@ -45,6 +88,8 @@ export default function Dashboard() {
   const [devGranting, setDevGranting] = useState(false);
   const [devMsg, setDevMsg] = useState("");
   const [devOpen, setDevOpen] = useState(false);
+
+  useEffect(() => { document.title = "Dashboard - Hegemon"; }, []);
 
   if (!nation || !round) return null;
 
@@ -169,7 +214,7 @@ export default function Dashboard() {
             <span className="text-gray-700">|</span>
             <span className="text-amber-400 font-medium">{round.phase} Phase</span>
           </div>
-          <span className="text-xs text-gray-500">Tick every 10 min</span>
+          <span className="text-xs text-gray-500 flex items-center gap-1.5">Tick every 10 min <HelpTooltip articleId="ticks" /></span>
         </div>
         <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
           <div
@@ -198,11 +243,29 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Shield status */}
+      {nation.shieldUntil && new Date(nation.shieldUntil) > new Date() && (
+        <div className="bg-gray-900 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-3">
+          <svg className="w-6 h-6 text-emerald-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/>
+          </svg>
+          <div>
+            <div className="text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+              Beginner Shield Active <HelpTooltip articleId="beginner-shield" />
+            </div>
+            <div className="text-xs text-gray-500">
+              You are protected from attacks until{" "}
+              {new Date(nation.shieldUntil).toLocaleString()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Energy section */}
       <div className="bg-gray-900 border border-blue-500/20 rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <GameIcon name="resource-energy" size={22} /> Energy Status
+            <GameIcon name="resource-energy" size={22} /> Energy Status <HelpTooltip articleId="energy" />
           </h2>
           <span className="text-sm text-gray-400">
             {minutesToFull > 0
@@ -246,37 +309,58 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Dev tools - collapsible */}
-      <div className="border border-gray-800 rounded-xl overflow-hidden">
-        <button
-          onClick={() => setDevOpen(!devOpen)}
-          className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-900/50 hover:bg-gray-900 transition-colors text-left"
-        >
-          <span className="text-xs font-medium text-gray-600">Dev Tools</span>
-          <span className="text-xs text-gray-700">{devOpen ? "\u25b2" : "\u25bc"}</span>
-        </button>
-        {devOpen && (
-          <div className="bg-gray-900/30 border-t border-gray-800 px-4 py-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-500">
-                +$50K cash, +20K materials, +5K tech, +10K food, refill energy
-              </p>
-              <div className="flex items-center gap-3">
-                {devMsg && (
-                  <span className="text-xs text-green-400">{devMsg}</span>
-                )}
-                <button
-                  onClick={handleDevGrant}
-                  disabled={devGranting}
-                  className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-700/50 text-gray-300 font-medium text-xs px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {devGranting ? "Granting..." : "Grant Resources"}
-                </button>
+      {/* Current Activity */}
+      {(nation.buildings.some((b) => b.building) || nation.troops.some((t) => t.training > 0)) && (
+        <div>
+          <h2 className="text-base font-semibold text-white mb-3">Current Activity</h2>
+          <div className="space-y-2">
+            {nation.buildings
+              .filter((b) => b.building)
+              .map((b) => (
+                <ActiveBuild key={b.id} building={b} />
+              ))}
+            {nation.troops
+              .filter((t) => t.training > 0)
+              .map((t) => (
+                <ActiveTrain key={t.id} troop={t} />
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Dev tools - collapsible (dev only) */}
+      {import.meta.env.DEV && (
+        <div className="border border-gray-800 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setDevOpen(!devOpen)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-900/50 hover:bg-gray-900 transition-colors text-left"
+          >
+            <span className="text-xs font-medium text-gray-600">Dev Tools</span>
+            <span className="text-xs text-gray-700">{devOpen ? "\u25b2" : "\u25bc"}</span>
+          </button>
+          {devOpen && (
+            <div className="bg-gray-900/30 border-t border-gray-800 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  +$50K cash, +20K materials, +5K tech, +10K food, refill energy
+                </p>
+                <div className="flex items-center gap-3">
+                  {devMsg && (
+                    <span className="text-xs text-green-400">{devMsg}</span>
+                  )}
+                  <button
+                    onClick={handleDevGrant}
+                    disabled={devGranting}
+                    className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-700/50 text-gray-300 font-medium text-xs px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    {devGranting ? "Granting..." : "Grant Resources"}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

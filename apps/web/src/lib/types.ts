@@ -93,6 +93,7 @@ export interface Nation {
   techNodes: unknown[];
   allianceMembership: AllianceMembership | null;
 
+  shieldUntil: string | null;
   createdAt: string;
   updatedAt: string;
 }

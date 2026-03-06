@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/game/alliance", icon: "/assets/icons/building-intelligence-hq.png", label: "Alliance" },
   { to: "/game/rankings", icon: "/assets/icons/building-commercial.png", label: "Rankings" },
   { to: "/game/profile", icon: "/assets/icons/building-research-lab.png", label: "Profile" },
+  { to: "/game/help", icon: "help", label: "Help" },
 ];
 
 interface SidebarProps {
@@ -17,6 +18,8 @@ interface SidebarProps {
   onToggle: () => void;
   nationName: string;
   allianceName: string | null;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export default function Sidebar({
@@ -24,6 +27,8 @@ export default function Sidebar({
   onToggle,
   nationName,
   allianceName,
+  mobileOpen = false,
+  onMobileClose,
 }: SidebarProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -33,26 +38,49 @@ export default function Sidebar({
     navigate("/");
   }
 
+  function handleNavClick() {
+    onMobileClose?.();
+  }
+
   return (
     <aside
-      className={`${
-        collapsed ? "w-16" : "w-56"
-      } flex flex-col bg-gray-950 border-r border-gray-800 transition-all duration-200 shrink-0`}
+      className={`
+        ${collapsed ? "w-16" : "w-56"}
+        hidden md:flex flex-col bg-gray-950 border-r border-gray-800 transition-all duration-200 shrink-0
+
+        ${mobileOpen
+          ? "!fixed inset-y-0 left-0 z-50 !flex !w-56 shadow-2xl shadow-black/50"
+          : ""
+        }
+      `}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800">
-        {!collapsed && (
+        {(!collapsed || mobileOpen) && (
           <span className="text-lg font-bold tracking-tight text-white">
             HEGEMON
           </span>
         )}
-        <button
-          onClick={onToggle}
-          className="text-gray-500 hover:text-gray-300 transition-colors p-1"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? "\u25b6" : "\u25c0"}
-        </button>
+        {/* Close button on mobile, collapse toggle on desktop */}
+        {mobileOpen ? (
+          <button
+            onClick={onMobileClose}
+            className="text-gray-500 hover:text-gray-300 transition-colors p-1 md:hidden"
+            aria-label="Close menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            onClick={onToggle}
+            className="text-gray-500 hover:text-gray-300 transition-colors p-1 hidden md:block"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? "\u25b6" : "\u25c0"}
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -62,29 +90,36 @@ export default function Sidebar({
             key={item.to}
             to={item.to}
             end={item.end}
-            title={collapsed ? item.label : undefined}
+            onClick={handleNavClick}
+            title={collapsed && !mobileOpen ? item.label : undefined}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isActive
                   ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
                   : "text-gray-400 hover:text-gray-200 hover:bg-gray-900 border border-transparent"
-              } ${collapsed ? "justify-center px-2" : ""}`
+              } ${collapsed && !mobileOpen ? "justify-center px-2" : ""}`
             }
           >
-            <img
-              src={item.icon}
-              alt={item.label}
-              className="w-5 h-5 shrink-0 object-contain"
-              loading="lazy"
-            />
-            {!collapsed && <span>{item.label}</span>}
+            {item.icon === "help" ? (
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <img
+                src={item.icon}
+                alt={item.label}
+                className="w-5 h-5 shrink-0 object-contain"
+                loading="lazy"
+              />
+            )}
+            {(!collapsed || mobileOpen) && <span>{item.label}</span>}
           </NavLink>
         ))}
       </nav>
 
       {/* Bottom section */}
       <div className="border-t border-gray-800 p-3">
-        {!collapsed && (
+        {(!collapsed || mobileOpen) && (
           <div className="mb-2 px-1">
             <div className="text-xs text-gray-500 uppercase tracking-wider">
               Nation
@@ -102,11 +137,11 @@ export default function Sidebar({
         <button
           onClick={handleLogout}
           className={`flex items-center gap-2 w-full text-sm text-gray-500 hover:text-red-400 transition-colors px-1 py-1 rounded ${
-            collapsed ? "justify-center" : ""
+            collapsed && !mobileOpen ? "justify-center" : ""
           }`}
         >
           <span className="text-base">{"\u23fb"}</span>
-          {!collapsed && <span>Logout</span>}
+          {(!collapsed || mobileOpen) && <span>Logout</span>}
         </button>
       </div>
     </aside>

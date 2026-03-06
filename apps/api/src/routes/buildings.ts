@@ -6,6 +6,7 @@ import {
   BUILDING_BASE_COST,
   BUILDING_TIME_PER_LEVEL,
   ENERGY_COSTS,
+  MAX_BUILDING_LEVEL,
 } from "../config/game.js";
 
 interface ConstructBody {
@@ -64,6 +65,14 @@ export async function buildingRoutes(app: FastifyInstance) {
       });
       if (!nation) {
         return reply.status(404).send({ error: "No nation in current round" });
+      }
+
+      // Check construction queue limit
+      const currentlyBuilding = nation.buildings.filter((b) => b.building).length;
+      if (currentlyBuilding >= 2) {
+        return reply
+          .status(400)
+          .send({ error: "Max 2 buildings under construction at once" });
       }
 
       // Check if already has this building type
@@ -149,6 +158,14 @@ export async function buildingRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: "No nation in current round" });
       }
 
+      // Check construction queue limit
+      const currentlyBuilding = nation.buildings.filter((b) => b.building).length;
+      if (currentlyBuilding >= 2) {
+        return reply
+          .status(400)
+          .send({ error: "Max 2 buildings under construction at once" });
+      }
+
       // Find the building
       const building = nation.buildings.find((b) => b.id === req.params.id);
       if (!building) {
@@ -163,6 +180,13 @@ export async function buildingRoutes(app: FastifyInstance) {
       }
 
       const nextLevel = building.level + 1;
+
+      if (nextLevel > MAX_BUILDING_LEVEL) {
+        return reply.status(400).send({
+          error: `Building is already at max level (${MAX_BUILDING_LEVEL})`,
+        });
+      }
+
       const cost = upgradeCost(nextLevel);
 
       // Check resources

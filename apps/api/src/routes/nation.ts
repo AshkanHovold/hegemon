@@ -50,6 +50,18 @@ export async function nationRoutes(app: FastifyInstance) {
         .send({ error: "Nation name and round ID required" });
     }
 
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2 || trimmedName.length > 30) {
+      return reply
+        .status(400)
+        .send({ error: "Nation name must be 2-30 characters" });
+    }
+    if (!/^[a-zA-Z0-9 _-]+$/.test(trimmedName)) {
+      return reply
+        .status(400)
+        .send({ error: "Nation name can only contain letters, numbers, spaces, hyphens, and underscores" });
+    }
+
     const existing = await prisma.nation.findUnique({
       where: {
         userId_roundId: { userId: req.user!.id, roundId },
@@ -64,9 +76,10 @@ export async function nationRoutes(app: FastifyInstance) {
 
     const nation = await prisma.nation.create({
       data: {
-        name,
+        name: trimmedName,
         userId: req.user!.id,
         roundId,
+        shieldUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
         // Starting buildings
         buildings: {
           create: [
@@ -136,6 +149,55 @@ export async function nationRoutes(app: FastifyInstance) {
     });
   });
 
+  // ── Dev cheat: complete all build/train queues instantly ─────────────
+  app.post("/nation/dev/complete-all", async (req, reply) => {
+    const secret = (req.headers["x-dev-secret"] as string) || "";
+    if (secret !== (process.env.DEV_SECRET || "hegemon-dev")) {
+      return reply.status(403).send({ error: "Forbidden" });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      include: { buildings: true, troops: true },
+    });
+    if (!nation) return reply.status(404).send({ error: "No nation" });
+
+    const now = new Date();
+
+    // Complete all building queues
+    const buildingUpdates = nation.buildings
+      .filter((b) => b.building && b.buildsAt && new Date(b.buildsAt) > now)
+      .map((b) =>
+        prisma.building.update({
+          where: { id: b.id },
+          data: { buildsAt: now },
+        })
+      );
+
+    // Complete all troop training queues
+    const troopUpdates = nation.troops
+      .filter((t) => t.training > 0 && t.trainsAt && new Date(t.trainsAt) > now)
+      .map((t) =>
+        prisma.troop.update({
+          where: { id: t.id },
+          data: { trainsAt: now },
+        })
+      );
+
+    await prisma.$transaction([...buildingUpdates, ...troopUpdates]);
+
+    return reply.send({
+      message: "All queues completed",
+      completed: {
+        buildings: buildingUpdates.length,
+        troops: troopUpdates.length,
+      },
+    });
+  });
+
   // Get nation overview (for other players — public info)
   app.get<{ Params: { id: string } }>("/nation/:id", async (req, reply) => {
     const nation = await prisma.nation.findUnique({
@@ -147,11 +209,18 @@ export async function nationRoutes(app: FastifyInstance) {
         population: true,
         civilians: true,
         military: true,
+        cash: true,
+        materials: true,
+        techPoints: true,
+        shieldUntil: true,
         allianceMembership: {
           select: {
             role: true,
             alliance: { select: { name: true, tag: true } },
           },
+        },
+        troops: {
+          select: { type: true, count: true },
         },
         createdAt: true,
       },
@@ -162,5 +231,42 @@ export async function nationRoutes(app: FastifyInstance) {
     }
 
     return reply.send({ nation });
+  });
+
+  // ── Rename nation ─────────────────────────────────────────────
+  app.patch<{ Body: { name: string } }>("/nation/name", async (req, reply) => {
+    const { name } = req.body;
+    if (!name) {
+      return reply.status(400).send({ error: "Name is required" });
+    }
+
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2 || trimmedName.length > 30) {
+      return reply
+        .status(400)
+        .send({ error: "Nation name must be 2-30 characters" });
+    }
+    if (!/^[a-zA-Z0-9 _-]+$/.test(trimmedName)) {
+      return reply
+        .status(400)
+        .send({ error: "Nation name can only contain letters, numbers, spaces, hyphens, and underscores" });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+    });
+    if (!nation) {
+      return reply.status(404).send({ error: "No nation in current round" });
+    }
+
+    const updated = await prisma.nation.update({
+      where: { id: nation.id },
+      data: { name: trimmedName },
+    });
+
+    return reply.send({ nation: { id: updated.id, name: updated.name } });
   });
 }

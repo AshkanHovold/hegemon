@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import GameIcon from "../components/GameIcon";
 
@@ -41,6 +42,8 @@ const FEATURES = [
 ];
 
 export default function Landing() {
+  useEffect(() => { document.title = "Hegemon - Build your nation. Wage war."; }, []);
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       {/* Navigation */}

@@ -230,6 +230,11 @@ export function stopTickEngine() {
  */
 export async function adminTickRoute(app: FastifyInstance) {
   app.get("/admin/tick", async (_req, reply) => {
+    const secret = _req.headers["x-admin-secret"] as string | undefined;
+    if (secret !== (process.env.ADMIN_SECRET || "hegemon-admin-dev")) {
+      return reply.status(403).send({ error: "Forbidden" });
+    }
+
     try {
       const result = await processTick();
       return reply.send({ ok: true, ...result });

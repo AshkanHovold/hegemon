@@ -17,6 +17,11 @@ export async function roundRoutes(app: FastifyInstance) {
 
   // Dev bootstrap: seed a round if none exists
   app.post("/round/seed", async (_req, reply) => {
+    const secret = _req.headers["x-admin-secret"] as string | undefined;
+    if (secret !== (process.env.ADMIN_SECRET || "hegemon-admin-dev")) {
+      return reply.status(403).send({ error: "Forbidden" });
+    }
+
     const existing = await prisma.round.findFirst({
       where: { active: true },
     });

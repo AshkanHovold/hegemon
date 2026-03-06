@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
+import ConfirmDialog from "../components/ConfirmDialog";
+import HelpTooltip from "../components/HelpTooltip";
 
 interface AllianceInfo {
   id: string;
@@ -49,6 +51,23 @@ function formatRole(role: string): string {
       return "Member";
   }
 }
+
+const ROLE_RANK: Record<string, number> = {
+  PRESIDENT: 4,
+  VICE_PRESIDENT: 3,
+  MINISTER_OF_WAR: 2,
+  MINISTER_OF_INTELLIGENCE: 2,
+  MINISTER_OF_TRADE: 2,
+  MEMBER: 1,
+};
+
+const PROMOTABLE_ROLES = [
+  { value: "VICE_PRESIDENT", label: "Vice President" },
+  { value: "MINISTER_OF_WAR", label: "War Minister" },
+  { value: "MINISTER_OF_INTELLIGENCE", label: "Intel Minister" },
+  { value: "MINISTER_OF_TRADE", label: "Trade Minister" },
+  { value: "MEMBER", label: "Member" },
+];
 
 function roleColor(role: string): string {
   if (role === "PRESIDENT") return "text-amber-400";
@@ -124,7 +143,7 @@ function NoAlliance({
   return (
     <div className="space-y-6 max-w-2xl mx-auto py-8">
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-white">Alliance</h1>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">Alliance <HelpTooltip articleId="alliance-overview" size="md" /></h1>
         <p className="text-gray-500 mt-2">
           Join or create an alliance to unlock coordinated warfare, shared
           resources, and the alliance chat.
@@ -262,6 +281,7 @@ export default function Alliance() {
   const [myRole, setMyRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
 
   async function fetchAlliance() {
     try {
@@ -278,6 +298,8 @@ export default function Alliance() {
       setLoading(false);
     }
   }
+
+  useEffect(() => { document.title = "Alliance - Hegemon"; }, []);
 
   useEffect(() => {
     if (nation) fetchAlliance();
@@ -308,14 +330,7 @@ export default function Alliance() {
   );
 
   async function handleLeave() {
-    if (
-      !confirm(
-        myRole === "PRESIDENT"
-          ? "As president, leaving will dissolve the entire alliance. Continue?"
-          : "Are you sure you want to leave the alliance?"
-      )
-    )
-      return;
+    setShowLeaveDialog(false);
     setError("");
     try {
       await api.delete("/alliance/leave");
@@ -328,10 +343,35 @@ export default function Alliance() {
     }
   }
 
+  async function handleKick(memberId: string) {
+    setError("");
+    try {
+      await api.post("/alliance/kick", { memberId });
+      await fetchAlliance();
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Failed to kick member");
+    }
+  }
+
+  async function handlePromote(memberId: string, role: string) {
+    setError("");
+    try {
+      await api.post("/alliance/promote", { memberId, role });
+      await fetchAlliance();
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Failed to promote member");
+    }
+  }
+
+  const canManageMembers =
+    myRole === "PRESIDENT" || myRole === "VICE_PRESIDENT";
+
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white">Alliance</h1>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">Alliance <HelpTooltip articleId="alliance-overview" size="md" /></h1>
         <p className="text-gray-500 text-sm mt-1">
           Coordinate with your alliance members
         </p>
@@ -384,7 +424,7 @@ export default function Alliance() {
             <div className="text-xs text-gray-500">Total Power</div>
           </div>
           <button
-            onClick={handleLeave}
+            onClick={() => setShowLeaveDialog(true)}
             className="bg-red-600/10 hover:bg-red-600/20 text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-500/20 transition-colors"
           >
             Leave
@@ -401,6 +441,10 @@ export default function Alliance() {
           <div className="divide-y divide-gray-800 max-h-[400px] overflow-y-auto">
             {alliance.members.map((m) => {
               const isYou = m.nationId === nation?.id;
+              const myRank = ROLE_RANK[myRole ?? "MEMBER"] ?? 1;
+              const memberRank = ROLE_RANK[m.role] ?? 1;
+              const canKick = canManageMembers && !isYou && memberRank < myRank;
+              const canPromote = myRole === "PRESIDENT" && !isYou;
               return (
                 <div
                   key={m.id}
@@ -421,13 +465,40 @@ export default function Alliance() {
                       {formatRole(m.role)}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500 tabular-nums">
-                      {m.nation.population.toLocaleString()} pop
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500 tabular-nums">
+                        {m.nation.population.toLocaleString()} pop
+                      </div>
+                      <div className="text-xs text-red-400 tabular-nums">
+                        {m.nation.military.toLocaleString()} mil
+                      </div>
                     </div>
-                    <div className="text-xs text-red-400 tabular-nums">
-                      {m.nation.military.toLocaleString()} mil
-                    </div>
+                    {(canKick || canPromote) && (
+                      <div className="flex items-center gap-1 ml-1">
+                        {canPromote && (
+                          <select
+                            value={m.role}
+                            onChange={(e) => handlePromote(m.id, e.target.value)}
+                            className="bg-gray-800 border border-gray-700 rounded text-xs text-gray-400 px-1 py-0.5 focus:outline-none focus:border-blue-500"
+                          >
+                            {PROMOTABLE_ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {canKick && (
+                          <button
+                            onClick={() => handleKick(m.id)}
+                            className="text-xs text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-500/10 transition-colors"
+                          >
+                            Kick
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -469,6 +540,21 @@ export default function Alliance() {
           No active wars. Alliance warfare will be available in the Open phase.
         </p>
       </div>
+
+      {/* Leave confirmation dialog */}
+      <ConfirmDialog
+        open={showLeaveDialog}
+        title={myRole === "PRESIDENT" ? "Dissolve Alliance" : "Leave Alliance"}
+        message={
+          myRole === "PRESIDENT"
+            ? "As president, leaving will dissolve the entire alliance. This cannot be undone. Continue?"
+            : "Are you sure you want to leave the alliance?"
+        }
+        confirmLabel={myRole === "PRESIDENT" ? "Dissolve & Leave" : "Leave Alliance"}
+        variant={myRole === "PRESIDENT" ? "danger" : "default"}
+        onConfirm={handleLeave}
+        onCancel={() => setShowLeaveDialog(false)}
+      />
     </div>
   );
 }

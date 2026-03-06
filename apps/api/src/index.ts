@@ -11,6 +11,7 @@ import { cyberRoutes } from "./routes/cyber.js";
 import { allianceRoutes } from "./routes/alliance.js";
 import { marketRoutes } from "./routes/market.js";
 import { attackRoutes } from "./routes/attack.js";
+import { eventRoutes } from "./routes/events.js";
 import { adminTickRoute, startTickEngine } from "./engine/tick.js";
 
 const port = Number(process.env.API_PORT) || 4100;
@@ -41,6 +42,7 @@ await app.register(cyberRoutes);
 await app.register(allianceRoutes);
 await app.register(marketRoutes);
 await app.register(attackRoutes);
+await app.register(eventRoutes);
 await app.register(adminTickRoute);
 
 app.listen({ port, host: "0.0.0.0" }, (err, address) => {

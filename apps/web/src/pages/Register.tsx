@@ -1,6 +1,20 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth, ApiError } from "../context/AuthContext";
+
+function passwordStrength(pw: string): { score: number; label: string; color: string } {
+  let score = 0;
+  if (pw.length >= 6) score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+
+  if (score <= 1) return { score, label: "Weak", color: "bg-red-500" };
+  if (score <= 2) return { score, label: "Fair", color: "bg-amber-500" };
+  if (score <= 3) return { score, label: "Good", color: "bg-blue-500" };
+  return { score, label: "Strong", color: "bg-emerald-500" };
+}
 
 export default function Register() {
   const [username, setUsername] = useState("");
@@ -10,6 +24,8 @@ export default function Register() {
   const [submitting, setSubmitting] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => { document.title = "Register - Hegemon"; }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -38,7 +54,7 @@ export default function Register() {
           <h1 className="text-4xl font-black tracking-tighter text-white">
             HEGEMON
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Found your nation</p>
+          <p className="text-sm text-gray-500 mt-1">Forge your nation</p>
         </Link>
 
         {/* Form */}
@@ -96,6 +112,25 @@ export default function Register() {
               minLength={6}
               disabled={submitting}
             />
+            {password.length > 0 && (
+              <div className="mt-2">
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                      key={i}
+                      className={`h-1 flex-1 rounded-full transition-colors ${
+                        i <= passwordStrength(password).score
+                          ? passwordStrength(password).color
+                          : "bg-gray-700"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-gray-500 mt-1">
+                  {passwordStrength(password).label}
+                </span>
+              </div>
+            )}
           </div>
 
           <button

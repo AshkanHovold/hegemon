@@ -93,10 +93,35 @@ export async function allianceRoutes(app: FastifyInstance) {
         .status(400)
         .send({ error: "Alliance name and tag are required" });
     }
+    if (name.length < 2 || name.length > 30) {
+      return reply
+        .status(400)
+        .send({ error: "Alliance name must be 2-30 characters" });
+    }
     if (tag.length < 2 || tag.length > 5) {
       return reply
         .status(400)
         .send({ error: "Tag must be 2-5 characters" });
+    }
+    if (!/^[a-zA-Z0-9]+$/.test(tag)) {
+      return reply
+        .status(400)
+        .send({ error: "Tag must be alphanumeric only" });
+    }
+    if (description && description.length > 200) {
+      return reply
+        .status(400)
+        .send({ error: "Description must be 200 characters or less" });
+    }
+
+    // Check tag uniqueness
+    const existingTag = await prisma.alliance.findUnique({
+      where: { tag: tag.toUpperCase() },
+    });
+    if (existingTag) {
+      return reply
+        .status(409)
+        .send({ error: "An alliance with this tag already exists" });
     }
 
     const round = await prisma.round.findFirst({ where: { active: true } });
@@ -192,14 +217,233 @@ export async function allianceRoutes(app: FastifyInstance) {
 
     const membership = nation.allianceMembership;
 
-    // If president, delete entire alliance
+    // If president, transfer or dissolve
     if (membership.role === "PRESIDENT") {
-      await prisma.alliance.delete({ where: { id: membership.allianceId } });
-      return reply.send({ message: "Alliance dissolved" });
+      // Check if there are other members
+      const otherMembers = await prisma.allianceMember.findMany({
+        where: {
+          allianceId: membership.allianceId,
+          id: { not: membership.id },
+        },
+        orderBy: { joinedAt: "asc" },
+      });
+
+      if (otherMembers.length === 0) {
+        // Last member — dissolve
+        await prisma.alliance.delete({ where: { id: membership.allianceId } });
+        return reply.send({ message: "Alliance dissolved" });
+      }
+
+      // Transfer presidency to longest-serving VP, or oldest member
+      const successor =
+        otherMembers.find((m) => m.role === "VICE_PRESIDENT") ||
+        otherMembers[0];
+
+      await prisma.$transaction([
+        prisma.allianceMember.update({
+          where: { id: successor.id },
+          data: { role: "PRESIDENT" },
+        }),
+        prisma.allianceMember.delete({ where: { id: membership.id } }),
+      ]);
+
+      return reply.send({
+        message: "Left alliance. Presidency transferred.",
+        newPresidentId: successor.nationId,
+      });
     }
 
     // Otherwise just leave
     await prisma.allianceMember.delete({ where: { id: membership.id } });
     return reply.send({ message: "Left alliance" });
+  });
+
+  // ── Kick member ──────────────────────────────────────────────
+  const ROLE_HIERARCHY: Record<string, number> = {
+    PRESIDENT: 5,
+    VICE_PRESIDENT: 4,
+    MINISTER_OF_WAR: 3,
+    MINISTER_OF_INTELLIGENCE: 3,
+    MINISTER_OF_TRADE: 3,
+    MEMBER: 1,
+  };
+
+  app.post<{ Body: { memberId: string } }>("/alliance/kick", async (req, reply) => {
+    const { memberId } = req.body;
+    if (!memberId) {
+      return reply.status(400).send({ error: "memberId is required" });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      include: { allianceMembership: true },
+    });
+    if (!nation || !nation.allianceMembership) {
+      return reply.status(404).send({ error: "Not in an alliance" });
+    }
+
+    const myRole = nation.allianceMembership.role;
+    if (myRole !== "PRESIDENT" && myRole !== "VICE_PRESIDENT") {
+      return reply.status(403).send({ error: "Only PRESIDENT and VICE_PRESIDENT can kick members" });
+    }
+
+    const target = await prisma.allianceMember.findUnique({
+      where: { id: memberId },
+    });
+    if (!target || target.allianceId !== nation.allianceMembership.allianceId) {
+      return reply.status(404).send({ error: "Member not found in your alliance" });
+    }
+
+    const myRank = ROLE_HIERARCHY[myRole] ?? 0;
+    const targetRank = ROLE_HIERARCHY[target.role] ?? 0;
+    if (targetRank >= myRank) {
+      return reply.status(403).send({ error: "Cannot kick someone of equal or higher role" });
+    }
+
+    await prisma.allianceMember.delete({ where: { id: target.id } });
+    return reply.send({ message: "Member kicked" });
+  });
+
+  // ── Promote member ──────────────────────────────────────────
+  const VALID_PROMOTE_ROLES = [
+    "VICE_PRESIDENT",
+    "MINISTER_OF_WAR",
+    "MINISTER_OF_INTELLIGENCE",
+    "MINISTER_OF_TRADE",
+    "MEMBER",
+  ];
+
+  app.post<{ Body: { memberId: string; role: string } }>("/alliance/promote", async (req, reply) => {
+    const { memberId, role } = req.body;
+    if (!memberId || !role) {
+      return reply.status(400).send({ error: "memberId and role are required" });
+    }
+
+    if (!VALID_PROMOTE_ROLES.includes(role)) {
+      return reply.status(400).send({
+        error: "Invalid role",
+        validRoles: VALID_PROMOTE_ROLES,
+      });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      include: { allianceMembership: true },
+    });
+    if (!nation || !nation.allianceMembership) {
+      return reply.status(404).send({ error: "Not in an alliance" });
+    }
+
+    if (nation.allianceMembership.role !== "PRESIDENT") {
+      return reply.status(403).send({ error: "Only the PRESIDENT can promote members" });
+    }
+
+    const target = await prisma.allianceMember.findUnique({
+      where: { id: memberId },
+    });
+    if (!target || target.allianceId !== nation.allianceMembership.allianceId) {
+      return reply.status(404).send({ error: "Member not found in your alliance" });
+    }
+
+    if (target.id === nation.allianceMembership.id) {
+      return reply.status(400).send({ error: "Cannot change your own role" });
+    }
+
+    const updated = await prisma.allianceMember.update({
+      where: { id: target.id },
+      data: { role: role as any },
+    });
+
+    return reply.send({ member: updated });
+  });
+
+  // ── Treasury deposit ────────────────────────────────────────
+  app.post<{ Body: { amount: number } }>("/alliance/treasury/deposit", async (req, reply) => {
+    const { amount } = req.body;
+    if (!amount || amount <= 0) {
+      return reply.status(400).send({ error: "Amount must be positive" });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      include: { allianceMembership: true },
+    });
+    if (!nation || !nation.allianceMembership) {
+      return reply.status(404).send({ error: "Not in an alliance" });
+    }
+
+    if (nation.cash < amount) {
+      return reply.status(400).send({ error: "Not enough cash", have: nation.cash, need: amount });
+    }
+
+    await prisma.$transaction([
+      prisma.nation.update({
+        where: { id: nation.id },
+        data: { cash: { decrement: amount } },
+      }),
+      prisma.alliance.update({
+        where: { id: nation.allianceMembership.allianceId },
+        data: { treasury: { increment: amount } },
+      }),
+    ]);
+
+    return reply.send({ message: "Deposited to alliance treasury", amount });
+  });
+
+  // ── Treasury withdraw ───────────────────────────────────────
+  app.post<{ Body: { amount: number } }>("/alliance/treasury/withdraw", async (req, reply) => {
+    const { amount } = req.body;
+    if (!amount || amount <= 0) {
+      return reply.status(400).send({ error: "Amount must be positive" });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      include: { allianceMembership: true },
+    });
+    if (!nation || !nation.allianceMembership) {
+      return reply.status(404).send({ error: "Not in an alliance" });
+    }
+
+    const myRole = nation.allianceMembership.role;
+    if (myRole !== "PRESIDENT" && myRole !== "MINISTER_OF_TRADE") {
+      return reply.status(403).send({ error: "Only PRESIDENT and MINISTER_OF_TRADE can withdraw" });
+    }
+
+    const alliance = await prisma.alliance.findUnique({
+      where: { id: nation.allianceMembership.allianceId },
+    });
+    if (!alliance || alliance.treasury < amount) {
+      return reply.status(400).send({
+        error: "Not enough funds in alliance treasury",
+        have: alliance?.treasury ?? 0,
+        need: amount,
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.alliance.update({
+        where: { id: alliance.id },
+        data: { treasury: { decrement: amount } },
+      }),
+      prisma.nation.update({
+        where: { id: nation.id },
+        data: { cash: { increment: amount } },
+      }),
+    ]);
+
+    return reply.send({ message: "Withdrawn from alliance treasury", amount });
   });
 }

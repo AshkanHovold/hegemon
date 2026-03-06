@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
+import { formatScore } from "../lib/format";
 import { useGame } from "../context/GameContext";
+import HelpTooltip from "../components/HelpTooltip";
 
 type RankingFilter = "overall" | "military" | "economic";
+type ViewMode = "individual" | "alliance";
 
 interface RankedNation {
   rank: number;
@@ -16,18 +19,25 @@ interface RankedNation {
   economic: number;
 }
 
-function formatScore(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
-  return n.toString();
+interface AllianceRanking {
+  tag: string;
+  name: string;
+  memberCount: number;
+  totalScore: number;
+  totalMilitary: number;
+  totalEconomic: number;
 }
 
 export default function Rankings() {
   const { nation, round } = useGame();
   const [filter, setFilter] = useState<RankingFilter>("overall");
+  const [viewMode, setViewMode] = useState<ViewMode>("individual");
   const [rankings, setRankings] = useState<RankedNation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => { document.title = "Rankings - Hegemon"; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,9 +66,12 @@ export default function Rankings() {
     }
 
     fetchRankings();
+    // Refresh rankings every 60 seconds
+    const interval = setInterval(fetchRankings, 60_000);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
@@ -73,6 +86,54 @@ export default function Rankings() {
   const sorted = [...rankings]
     .sort((a, b) => b[sortKey] - a[sortKey])
     .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  // Apply search filter
+  const searchLower = search.toLowerCase();
+  const filteredSorted = search
+    ? sorted.filter(
+        (r) =>
+          r.name.toLowerCase().includes(searchLower) ||
+          r.username.toLowerCase().includes(searchLower) ||
+          r.alliance?.tag.toLowerCase().includes(searchLower) ||
+          r.alliance?.name.toLowerCase().includes(searchLower)
+      )
+    : sorted;
+
+  // Aggregate alliance rankings
+  const allianceRankings: AllianceRanking[] = (() => {
+    const map = new Map<string, AllianceRanking>();
+    for (const r of rankings) {
+      if (!r.alliance) continue;
+      const key = r.alliance.tag;
+      const existing = map.get(key);
+      if (existing) {
+        existing.memberCount++;
+        existing.totalScore += r.score;
+        existing.totalMilitary += r.military;
+        existing.totalEconomic += r.economic;
+      } else {
+        map.set(key, {
+          tag: r.alliance.tag,
+          name: r.alliance.name,
+          memberCount: 1,
+          totalScore: r.score,
+          totalMilitary: r.military,
+          totalEconomic: r.economic,
+        });
+      }
+    }
+    const arr = Array.from(map.values());
+    const allianceSortKey =
+      filter === "military"
+        ? "totalMilitary"
+        : filter === "economic"
+          ? "totalEconomic"
+          : "totalScore";
+    arr.sort((a, b) => b[allianceSortKey] - a[allianceSortKey]);
+    return arr;
+  })();
+
+  const myAllianceTag = nation?.allianceMembership?.alliance?.tag ?? null;
 
   // Build subtitle from round data
   const subtitle = round
@@ -100,20 +161,35 @@ export default function Rankings() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-bold text-white">Rankings</h1>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">Rankings <HelpTooltip articleId="scoring" size="md" /></h1>
         {subtitle && (
           <p className="text-gray-500 text-sm mt-1">{subtitle}</p>
         )}
       </div>
 
-      {/* Tab selector */}
-      <div className="flex items-center gap-4">
+      {/* Search + Tab selector */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search nations..."
+          className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500 w-48"
+        />
         <div className="flex gap-2">
-          <button
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-800 text-white border border-gray-700"
-          >
-            Individual
-          </button>
+          {(["individual", "alliance"] as ViewMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
+                viewMode === mode
+                  ? "bg-gray-800 text-white border border-gray-700"
+                  : "text-gray-500 hover:text-gray-300 border border-transparent"
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
         </div>
 
         <div className="ml-auto flex gap-1">
@@ -163,9 +239,97 @@ export default function Rankings() {
           <div className="flex items-center justify-center py-16 text-red-400">
             {error}
           </div>
-        ) : sorted.length === 0 ? (
+        ) : viewMode === "individual" ? (
+          filteredSorted.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-gray-500">
+              No nations found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 text-xs border-b border-gray-800">
+                    <th className="px-5 py-3 font-medium w-16">Rank</th>
+                    <th className="px-5 py-3 font-medium">Name</th>
+                    <th className="px-5 py-3 font-medium">Alliance</th>
+                    <th className="px-5 py-3 font-medium text-right">
+                      {filter === "military"
+                        ? "Military"
+                        : filter === "economic"
+                          ? "Economic"
+                          : "Score"}
+                    </th>
+                    {filter === "overall" && (
+                      <>
+                        <th className="px-5 py-3 font-medium text-right">
+                          Military
+                        </th>
+                        <th className="px-5 py-3 font-medium text-right">
+                          Economic
+                        </th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {filteredSorted.map((r) => {
+                    const isYou = nation !== null && r.id === nation.id;
+                    return (
+                      <tr
+                        key={r.id}
+                        className={`hover:bg-gray-800/50 ${
+                          isYou ? "bg-blue-500/5" : ""
+                        }`}
+                      >
+                        <td className="px-5 py-3">
+                          <span
+                            className={`font-bold tabular-nums ${
+                              r.rank === 1
+                                ? "text-amber-400"
+                                : r.rank === 2
+                                  ? "text-gray-300"
+                                  : r.rank === 3
+                                    ? "text-orange-400"
+                                    : "text-gray-500"
+                            }`}
+                          >
+                            #{r.rank}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-gray-200 font-medium">
+                          {r.name}
+                          {isYou && (
+                            <span className="text-xs text-blue-400 ml-1.5">
+                              (you)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-gray-500 text-xs font-mono">
+                          {r.alliance ? `[${r.alliance.tag}]` : "-"}
+                        </td>
+                        <td className="px-5 py-3 text-right text-white font-semibold tabular-nums">
+                          {formatScore(r[sortKey])}
+                        </td>
+                        {filter === "overall" && (
+                          <>
+                            <td className="px-5 py-3 text-right text-red-400 tabular-nums">
+                              {formatScore(r.military)}
+                            </td>
+                            <td className="px-5 py-3 text-right text-emerald-400 tabular-nums">
+                              {formatScore(r.economic)}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : allianceRankings.length === 0 ? (
           <div className="flex items-center justify-center py-16 text-gray-500">
-            No nations found.
+            No alliances found.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -173,14 +337,14 @@ export default function Rankings() {
               <thead>
                 <tr className="text-left text-gray-500 text-xs border-b border-gray-800">
                   <th className="px-5 py-3 font-medium w-16">Rank</th>
-                  <th className="px-5 py-3 font-medium">Name</th>
                   <th className="px-5 py-3 font-medium">Alliance</th>
+                  <th className="px-5 py-3 font-medium text-right">Members</th>
                   <th className="px-5 py-3 font-medium text-right">
                     {filter === "military"
                       ? "Military"
                       : filter === "economic"
                         ? "Economic"
-                        : "Score"}
+                        : "Total Score"}
                   </th>
                   {filter === "overall" && (
                     <>
@@ -195,51 +359,62 @@ export default function Rankings() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
-                {sorted.map((r) => {
-                  const isYou = nation !== null && r.id === nation.id;
+                {allianceRankings.map((a, i) => {
+                  const isYours = myAllianceTag === a.tag;
+                  const allianceSortValue =
+                    filter === "military"
+                      ? a.totalMilitary
+                      : filter === "economic"
+                        ? a.totalEconomic
+                        : a.totalScore;
                   return (
                     <tr
-                      key={r.id}
+                      key={a.tag}
                       className={`hover:bg-gray-800/50 ${
-                        isYou ? "bg-blue-500/5" : ""
+                        isYours ? "bg-blue-500/5" : ""
                       }`}
                     >
                       <td className="px-5 py-3">
                         <span
                           className={`font-bold tabular-nums ${
-                            r.rank === 1
+                            i === 0
                               ? "text-amber-400"
-                              : r.rank === 2
+                              : i === 1
                                 ? "text-gray-300"
-                                : r.rank === 3
+                                : i === 2
                                   ? "text-orange-400"
                                   : "text-gray-500"
                           }`}
                         >
-                          #{r.rank}
+                          #{i + 1}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-gray-200 font-medium">
-                        {r.name}
-                        {isYou && (
+                      <td className="px-5 py-3">
+                        <span className="text-gray-200 font-medium">
+                          {a.name}
+                        </span>
+                        <span className="text-blue-400 text-xs font-mono ml-2">
+                          [{a.tag}]
+                        </span>
+                        {isYours && (
                           <span className="text-xs text-blue-400 ml-1.5">
-                            (you)
+                            (yours)
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-gray-500 text-xs font-mono">
-                        {r.alliance ? `[${r.alliance.tag}]` : "-"}
+                      <td className="px-5 py-3 text-right text-gray-400 tabular-nums">
+                        {a.memberCount}
                       </td>
                       <td className="px-5 py-3 text-right text-white font-semibold tabular-nums">
-                        {formatScore(r[sortKey])}
+                        {formatScore(allianceSortValue)}
                       </td>
                       {filter === "overall" && (
                         <>
                           <td className="px-5 py-3 text-right text-red-400 tabular-nums">
-                            {formatScore(r.military)}
+                            {formatScore(a.totalMilitary)}
                           </td>
                           <td className="px-5 py-3 text-right text-emerald-400 tabular-nums">
-                            {formatScore(r.economic)}
+                            {formatScore(a.totalEconomic)}
                           </td>
                         </>
                       )}

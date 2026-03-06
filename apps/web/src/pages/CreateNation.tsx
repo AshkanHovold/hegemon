@@ -73,9 +73,14 @@ export default function CreateNation() {
               maxLength={30}
               disabled={submitting}
             />
-            <p className="text-xs text-gray-600 mt-1">
-              This will be your nation's name in the game world
-            </p>
+            <div className="flex justify-between mt-1">
+              <p className="text-xs text-gray-600">
+                Letters, numbers, spaces, hyphens only
+              </p>
+              <span className={`text-xs tabular-nums ${name.length > 25 ? "text-amber-400" : "text-gray-600"}`}>
+                {name.length}/30
+              </span>
+            </div>
           </div>
 
           {error && (

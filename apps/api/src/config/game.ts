@@ -84,6 +84,9 @@ export const ENERGY_COSTS = {
 // Tick interval: 10 minutes
 export const TICK_INTERVAL_MS = 10 * 60 * 1000;
 
+// Building level cap
+export const MAX_BUILDING_LEVEL = 20;
+
 // Population
 export const POP_GROWTH_BASE = 10; // base pop growth per tick
 export const FOOD_PER_POP = 0.01; // food consumed per population per tick

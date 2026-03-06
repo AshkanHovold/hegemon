@@ -140,6 +140,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [nation, refreshNation]);
 
+  // Periodic refresh every 60 seconds to stay in sync with tick engine
+  useEffect(() => {
+    if (!user || !nation) return;
+    const id = setInterval(() => {
+      refreshNation();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [user, nation?.id, refreshNation]);
+
   return (
     <GameContext.Provider
       value={{ nation, round, loading, error, needsNation, createNation, refreshNation }}

@@ -1,15 +1,22 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useGame } from "../context/GameContext";
+import { api, ApiError } from "../lib/api";
+import { useToast } from "../components/Toast";
 
 export default function Profile() {
   const { user, logout } = useAuth();
-  const { nation, round } = useGame();
+  const { nation, round, refreshNation } = useGame();
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
 
   const [nationName, setNationName] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+
+  useEffect(() => { document.title = "Profile - Hegemon"; }, []);
 
   const [notifications, setNotifications] = useState({
     attacks: true,
@@ -71,12 +78,37 @@ export default function Profile() {
                 className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
               />
               <button
-                onClick={() => console.log("Update nation name:", nationName)}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                disabled={saving || nationName === nation?.name}
+                onClick={async () => {
+                  setSaving(true);
+                  setSaveMsg("");
+                  try {
+                    await api.patch("/nation/name", { name: nationName });
+                    toast("success", "Nation name updated");
+                    setSaveMsg("Name updated!");
+                    await refreshNation();
+                  } catch (err) {
+                    if (err instanceof ApiError) {
+                      setSaveMsg(err.message);
+                      toast("error", err.message);
+                    } else {
+                      setSaveMsg("Failed to update name");
+                      toast("error", "Failed to update name");
+                    }
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
-                Save
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
+            {saveMsg && (
+              <p className={`text-xs mt-1 ${saveMsg.startsWith("Name") ? "text-emerald-400" : "text-red-400"}`}>
+                {saveMsg}
+              </p>
+            )}
             <p className="text-xs text-gray-600 mt-1">
               Can be changed once per round.
             </p>
@@ -126,53 +158,68 @@ export default function Profile() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1.5">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div className="border-t border-gray-800 pt-4">
-            <h3 className="text-xs text-gray-500 mb-3">Change Password</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form onSubmit={(e) => e.preventDefault()} autoComplete="on">
+            <div className="space-y-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">
-                  Current Password
-                </label>
+                <label className="block text-xs text-gray-500 mb-1.5">Email</label>
                 <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder={"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1.5">
-                  New Password
-                </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder={"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                />
+
+              <div className="border-t border-gray-800 pt-4">
+                <h3 className="text-xs text-gray-500 mb-3">Change Password</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1.5">
+                      Current Password
+                    </label>
+                    <input
+                      type="password"
+                      name="current-password"
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder={"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1.5">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      name="new-password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder={"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled
+                  className="bg-blue-600/50 text-white/60 text-sm font-medium px-4 py-2 rounded-lg cursor-not-allowed"
+                >
+                  Save Changes
+                </button>
+                <span className="text-xs text-gray-600">Account editing coming soon</span>
               </div>
             </div>
-          </div>
+          </form>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => alert("Coming soon")}
-              className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-            >
-              Coming soon
-            </button>
+          <div className="flex gap-2 mt-4">
             <button
               onClick={logout}
               className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium px-4 py-2 rounded-lg transition-colors border border-gray-700"

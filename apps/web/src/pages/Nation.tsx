@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
 import {
@@ -6,17 +6,14 @@ import {
   BUILDING_PRODUCTION,
   BUILDING_TIME_PER_LEVEL,
   ALL_BUILDING_TYPES,
+  MAX_BUILDING_LEVEL,
   upgradeCost,
 } from "../lib/gameConstants";
 import { useCountdown } from "../hooks/useCountdown";
+import { formatCost } from "../lib/format";
 import GameIcon from "../components/GameIcon";
+import HelpTooltip from "../components/HelpTooltip";
 import type { Building, BuildingType } from "../lib/types";
-
-function formatCost(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
-  return n.toString();
-}
 
 /** Inline progress bar component for a building under construction */
 function BuildProgress({ building }: { building: Building }) {
@@ -89,6 +86,8 @@ export default function Nation() {
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [constructing, setConstructing] = useState<string | null>(null);
 
+  useEffect(() => { document.title = "Nation - Hegemon"; }, []);
+
   if (!nation) return null;
 
   const totalPop = nation.population;
@@ -139,7 +138,9 @@ export default function Nation() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Nation Management</h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+          Nation Management <HelpTooltip articleId="buildings-overview" size="md" />
+        </h1>
         <p className="text-gray-500 text-sm mt-1">
           Build and upgrade your infrastructure
         </p>
@@ -178,6 +179,7 @@ export default function Nation() {
           const display = BUILDING_DISPLAY[b.type];
           const prod = BUILDING_PRODUCTION[b.type];
           const nextLevel = b.level + 1;
+          const isMaxLevel = b.level >= MAX_BUILDING_LEVEL;
           const cost = upgradeCost(nextLevel);
           const isUpgrading = upgrading === b.id;
 
@@ -221,25 +223,31 @@ export default function Nation() {
               <BuildProgress building={b} />
 
               <div className="mt-auto flex items-center justify-between pt-3">
-                <div className="text-xs text-gray-500">
-                  <span className="text-amber-400">
-                    ${formatCost(cost.cash)}
-                  </span>
-                  {" + "}
-                  <span className="text-slate-300">
-                    {formatCost(cost.materials)} mat
-                  </span>
-                </div>
+                {isMaxLevel ? (
+                  <span className="text-xs text-emerald-400 font-medium">Max Level</span>
+                ) : (
+                  <div className="text-xs text-gray-500">
+                    <span className="text-amber-400">
+                      ${formatCost(cost.cash)}
+                    </span>
+                    {" + "}
+                    <span className="text-slate-300">
+                      {formatCost(cost.materials)} mat
+                    </span>
+                  </div>
+                )}
                 <button
                   onClick={() => handleUpgrade(b)}
-                  disabled={b.building || isUpgrading}
+                  disabled={b.building || isUpgrading || isMaxLevel}
                   className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
                 >
-                  {isUpgrading
-                    ? "Upgrading..."
-                    : b.building
-                      ? "Building..."
-                      : `Upgrade to ${nextLevel}`}
+                  {isMaxLevel
+                    ? "Max Level"
+                    : isUpgrading
+                      ? "Upgrading..."
+                      : b.building
+                        ? "Building..."
+                        : `Upgrade to ${nextLevel}`}
                 </button>
               </div>
             </div>
@@ -310,7 +318,7 @@ export default function Nation() {
       {/* Population Management */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <h2 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-          <GameIcon name="resource-population" size={22} /> Population Management
+          <GameIcon name="resource-population" size={22} /> Population Management <HelpTooltip articleId="population" />
         </h2>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

@@ -32,6 +32,11 @@ export async function troopRoutes(app: FastifyInstance) {
           .status(400)
           .send({ error: "Count must be a positive integer" });
       }
+      if (count > 1000) {
+        return reply
+          .status(400)
+          .send({ error: "Max 1000 troops per batch" });
+      }
 
       // Get active round
       const round = await prisma.round.findFirst({ where: { active: true } });
@@ -71,10 +76,12 @@ export async function troopRoutes(app: FastifyInstance) {
           have: nation.materials,
         });
       }
-      if (nation.energy < ENERGY_COSTS.TRAIN) {
+      // Energy scales with count: base cost + 1 per 10 troops
+      const energyCost = ENERGY_COSTS.TRAIN + Math.floor(count / 10);
+      if (nation.energy < energyCost) {
         return reply.status(400).send({
           error: "Not enough energy",
-          need: ENERGY_COSTS.TRAIN,
+          need: energyCost,
           have: nation.energy,
         });
       }
@@ -130,7 +137,7 @@ export async function troopRoutes(app: FastifyInstance) {
             data: {
               cash: { decrement: totalCash },
               materials: { decrement: totalMaterials },
-              energy: { decrement: ENERGY_COSTS.TRAIN },
+              energy: { decrement: energyCost },
             },
           }),
         ]);
@@ -153,7 +160,7 @@ export async function troopRoutes(app: FastifyInstance) {
             data: {
               cash: { decrement: totalCash },
               materials: { decrement: totalMaterials },
-              energy: { decrement: ENERGY_COSTS.TRAIN },
+              energy: { decrement: energyCost },
             },
           }),
         ]);

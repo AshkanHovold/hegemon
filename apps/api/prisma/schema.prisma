@@ -92,6 +92,7 @@ model Nation {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, roundId])
+  @@index([roundId])
 }
 
 // ─── Buildings ──────────────────────────────────────────
@@ -105,6 +106,8 @@ model Building {
   building  Boolean      @default(false) // under construction?
   buildsAt  DateTime? // when construction finishes
   createdAt DateTime     @default(now())
+
+  @@index([nationId])
 }
 
 enum BuildingType {
@@ -131,6 +134,8 @@ model Troop {
   count    Int       @default(0)
   training Int       @default(0) // units currently training
   trainsAt DateTime? // when training batch finishes
+
+  @@index([nationId])
 }
 
 enum UnitType {
@@ -167,6 +172,10 @@ model Attack {
 
   createdAt  DateTime @default(now())
   resolvesAt DateTime // when the attack lands
+
+  @@index([attackerId])
+  @@index([defenderId])
+  @@index([attackerId, defenderId, createdAt])
 }
 
 // ─── Cyber Operations ───────────────────────────────────
@@ -183,6 +192,9 @@ model CyberOp {
   result     Json? // op-specific result data
   expiresAt  DateTime? // for effects that last X ticks
   createdAt  DateTime    @default(now())
+
+  @@index([attackerId])
+  @@index([defenderId])
 }
 
 enum CyberOpType {
@@ -239,6 +251,8 @@ model MarketOrder {
   status    OrderStatus @default(OPEN)
   createdAt DateTime    @default(now())
   filledAt  DateTime?
+
+  @@index([roundId, commodity, side, status])
 }
 
 enum OrderSide {

@@ -21,67 +21,82 @@
 - [x] Energy system (capped pool, regen per tick, spend on actions)
 
 ## Phase 3: Core Gameplay APIs
-- [x] Building system — construct new buildings, upgrade existing
-- [x] Military — train units (5 types), barracks speed bonus
+- [x] Building system — construct new buildings, upgrade existing, level cap (20)
+- [x] Military — train units (5 types), barracks speed bonus, troop selection for attacks
 - [x] Combat — instant resolution, ATK vs DEF with randomness, troop losses, resource looting
-- [x] Cyber operations — 8 op types, 3 fully functional (recon, data theft, EMP)
+- [x] Cyber operations — all 8 op types fully functional
+- [x] Round phase enforcement (Growth phase blocks attacks & cyber ops)
+- [x] Beginner shield (24h protection for new nations)
+- [x] Attack cooldowns (10 min between same targets)
 - [ ] Tech tree — research nodes, unlock bonuses (schema exists, no endpoints)
 
 ## Phase 4: Market
-- [x] Order book (buy/sell matching engine, price-time priority)
-- [ ] Price history tracking / charts
+- [x] Order book (buy/sell matching engine, price-time priority, transaction-safe)
 - [x] Trade endpoints (place, cancel, view orders, trade history)
-- [ ] Market manipulation (cyber op stored but not processed)
+- [x] Price history tracking / charts
+- [ ] Market cooldown / spam prevention
 
 ## Phase 5: Alliances
 - [x] Create/join/leave alliance
 - [x] Roles and permissions (6 roles)
-- [ ] Alliance treasury (field exists, no deposit/withdraw)
+- [x] Alliance kick/promote endpoints
+- [x] Alliance president transfer (on leave)
+- [x] Alliance treasury (deposit/withdraw)
+- [x] Alliance name/tag validation & uniqueness
 - [ ] NAPs and war declarations
 - [ ] WebSocket chat
 - [ ] Coordinated attack bonuses
 
 ## Phase 6: Frontend — Game UI
-- [x] Auth pages (login/register)
-- [x] Dashboard (resource bars, energy, production rates, quick actions, dev tools)
-- [x] Nation management (building grid, construction queue with progress bars, upgrade)
-- [x] Military (troops table, training with progress bars, nation picker for attacks, battle history)
-- [x] Cyber operations (op cards by category, target selection, active ops, defense log)
-- [x] Market (order book with depth, buy/sell forms, your orders, trade history)
-- [x] Alliance (create/join, member roster with roles, browse alliances)
-- [x] Rankings (sortable leaderboard: overall, military, economic)
-- [x] Profile / settings (account info, notification preferences)
+- [x] Auth pages (login/register with password strength)
+- [x] Dashboard (resources, energy, round status, quick actions, active builds/trains, shield status, dev tools)
+- [x] Nation management (building grid, construction queue, upgrade, level cap display)
+- [x] Military (troops table, training, troop selection UI, nation picker, battle history)
+- [x] Cyber operations (op cards, target selection, active ops, defense log, result details)
+- [x] Market (order book with depth, buy/sell forms, orders, trade history, price chart)
+- [x] Alliance (create/join, member roster with roles, browse, kick/promote, treasury)
+- [x] Rankings (sortable leaderboard: overall/military/economic, individual/alliance tabs)
+- [x] Profile / settings (nation rename, account info, notification preferences)
 - [x] Landing page
+- [x] Toast notifications system
+- [x] Error boundary
+- [x] Confirmation dialogs
+- [x] Dynamic page titles
+- [x] Event log / notification bell
+- [x] Auto-refresh (60s tick sync + build/train completion detection)
 
 ## Phase 7: Visual Identity & Assets
 - [x] Game logo/wordmark
-- [x] Landing page with feature cards and stats
-- [x] UI icons for resources (6 types — generated PNG)
-- [x] UI icons for buildings (11 types — generated PNG)
-- [x] UI icons for military units (5 types — generated PNG)
-- [x] UI icons for cyber operations (8 types — generated PNG)
-- [x] Favicon
+- [x] Landing page with feature cards
+- [x] UI icons for all game elements (resources, buildings, units, cyber ops)
+- [x] Favicon (SVG)
 - [ ] PWA icons
 - [ ] Alliance emblems / nation flags
 
-## Phase 8: Polish & Launch Prep
+## Phase 8: Security & Hardening
+- [x] Rate limiting on auth endpoints
+- [x] Admin route authentication (tick, round seed)
+- [x] Dev endpoint protection
+- [x] Input validation (names, quantities, prices)
+- [x] Database indexes for performance
+- [x] Market transaction atomicity
+- [x] Loot clamping (prevent negative/excess loot)
+- [x] Construction queue limits
+- [x] Troop training batch cap
+- [ ] CSRF protection
+- [ ] Helmet security headers
+
+## Phase 9: Polish & Launch Prep
 - [ ] PWA manifest + service worker
-- [ ] Notification system (in-app + push)
+- [ ] Push notifications
 - [ ] Tutorial / onboarding flow
 - [ ] Admin panel (round management, moderation)
-- [ ] Rate limiting, security hardening
 - [ ] Load testing the tick engine
 - [ ] Deploy (VPS, Traefik, CI/CD)
 
 ## Not Yet Implemented (from game design doc)
-- [ ] Round phase enforcement (Growth phase should block attacks)
-- [ ] Damage caps / shields (casual server mode)
-- [ ] Attack cooldowns between same targets
-- [ ] Remaining cyber ops effects (network infiltration, system hack, infrastructure sabotage, market manipulation, propaganda)
 - [ ] Population allocation slider (civilian/military ratio is auto 80/20)
-- [ ] Alliance chat (WebSocket)
+- [ ] PvE mode with AI rogue states
 - [ ] Alliance coordinated attack bonuses
 - [ ] Alliance war declarations / NAPs
-- [ ] PvE mode with AI rogue states
-- [ ] Price charts on market
-- [ ] Notification feed / event log
+- [ ] Alliance chat (WebSocket)
