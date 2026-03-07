@@ -16,6 +16,9 @@ import Alliance from "./pages/Alliance";
 import Rankings from "./pages/Rankings";
 import Profile from "./pages/Profile";
 import Help from "./pages/Help";
+import Achievements from "./pages/Achievements";
+import Messages from "./pages/Messages";
+import TechTree from "./pages/TechTree";
 import CreateNation from "./pages/CreateNation";
 import type { ReactNode } from "react";
 
@@ -105,6 +108,9 @@ function AppRoutes() {
         <Route path="rankings" element={<Rankings />} />
         <Route path="profile" element={<Profile />} />
         <Route path="help" element={<Help />} />
+        <Route path="achievements" element={<Achievements />} />
+        <Route path="messages" element={<Messages />} />
+        <Route path="tech" element={<TechTree />} />
       </Route>
     </Routes>
   );

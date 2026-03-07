@@ -85,6 +85,8 @@ export default function Nation() {
   const [error, setError] = useState("");
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [constructing, setConstructing] = useState<string | null>(null);
+  const [conscriptionRatio, setConscriptionRatio] = useState(50);
+  const [savingConscription, setSavingConscription] = useState(false);
 
   useEffect(() => { document.title = "Nation - Hegemon"; }, []);
 
@@ -365,6 +367,68 @@ export default function Nation() {
           <div className="flex justify-between text-xs text-gray-600 mt-1">
             <span>Civilians ({civilianPop.toLocaleString()})</span>
             <span>Military ({militaryPop.toLocaleString()})</span>
+          </div>
+        </div>
+
+        {/* Conscription Ratio Slider */}
+        <div className="mt-6 border-t border-gray-800 pt-5">
+          <h3 className="text-sm font-medium text-gray-300 mb-3">
+            Conscription Ratio
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Adjust the balance between civilian workforce and military personnel.
+            More civilians means faster economy growth. More military means a bigger army.
+          </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>10% military</span>
+              <span className="text-sm font-medium text-blue-400">
+                {conscriptionRatio}% military
+              </span>
+              <span>90% military</span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={90}
+              step={5}
+              value={conscriptionRatio}
+              onChange={(e) => setConscriptionRatio(Number(e.target.value))}
+              className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">
+                {conscriptionRatio <= 30
+                  ? "Economy focused - faster resource generation"
+                  : conscriptionRatio >= 70
+                    ? "Military focused - larger standing army"
+                    : "Balanced - moderate growth and defense"}
+              </span>
+              <button
+                onClick={async () => {
+                  setSavingConscription(true);
+                  setError("");
+                  try {
+                    await api.post("/nation/conscription", {
+                      ratio: conscriptionRatio,
+                    });
+                    await refreshNation();
+                  } catch (err) {
+                    if (err instanceof ApiError) {
+                      setError(err.message);
+                    } else {
+                      setError("Failed to update conscription ratio");
+                    }
+                  } finally {
+                    setSavingConscription(false);
+                  }
+                }}
+                disabled={savingConscription}
+                className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+              >
+                {savingConscription ? "Saving..." : "Apply"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

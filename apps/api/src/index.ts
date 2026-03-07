@@ -12,6 +12,10 @@ import { allianceRoutes } from "./routes/alliance.js";
 import { marketRoutes } from "./routes/market.js";
 import { attackRoutes } from "./routes/attack.js";
 import { eventRoutes } from "./routes/events.js";
+import { achievementRoutes } from "./routes/achievements.js";
+import { missionRoutes } from "./routes/missions.js";
+import { messageRoutes } from "./routes/messages.js";
+import { worldRoutes } from "./routes/world.js";
 import { adminTickRoute, startTickEngine } from "./engine/tick.js";
 
 const port = Number(process.env.API_PORT) || 4100;
@@ -43,6 +47,10 @@ await app.register(allianceRoutes);
 await app.register(marketRoutes);
 await app.register(attackRoutes);
 await app.register(eventRoutes);
+await app.register(achievementRoutes);
+await app.register(missionRoutes);
+await app.register(messageRoutes);
+await app.register(worldRoutes);
 await app.register(adminTickRoute);
 
 app.listen({ port, host: "0.0.0.0" }, (err, address) => {

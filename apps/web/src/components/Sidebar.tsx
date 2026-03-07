@@ -2,15 +2,17 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const NAV_ITEMS = [
-  { to: "/game", icon: "/assets/icons/resource-cash.png", label: "Dashboard", end: true },
-  { to: "/game/nation", icon: "/assets/icons/building-residential.png", label: "Nation" },
-  { to: "/game/military", icon: "/assets/icons/unit-infantry.png", label: "Military" },
-  { to: "/game/cyber", icon: "/assets/icons/cyber-hack.png", label: "Cyber Ops" },
-  { to: "/game/market", icon: "/assets/icons/resource-materials.png", label: "Market" },
-  { to: "/game/alliance", icon: "/assets/icons/building-intelligence-hq.png", label: "Alliance" },
-  { to: "/game/rankings", icon: "/assets/icons/building-commercial.png", label: "Rankings" },
-  { to: "/game/profile", icon: "/assets/icons/building-research-lab.png", label: "Profile" },
-  { to: "/game/help", icon: "help", label: "Help" },
+  { to: "/game", icon: "/assets/icons/resource-cash.png", label: "Dashboard", end: true, tutorialId: null },
+  { to: "/game/nation", icon: "/assets/icons/building-residential.png", label: "Nation", tutorialId: "nav-nation" },
+  { to: "/game/military", icon: "/assets/icons/unit-infantry.png", label: "Military", tutorialId: "nav-military" },
+  { to: "/game/cyber", icon: "/assets/icons/cyber-hack.png", label: "Cyber Ops", tutorialId: "nav-cyber" },
+  { to: "/game/market", icon: "/assets/icons/resource-materials.png", label: "Market", tutorialId: "nav-market" },
+  { to: "/game/alliance", icon: "/assets/icons/building-intelligence-hq.png", label: "Alliance", tutorialId: "nav-alliance" },
+  { to: "/game/achievements", icon: "/assets/icons/resource-tech.png", label: "Achievements", tutorialId: null },
+  { to: "/game/messages", icon: "messages", label: "Messages", tutorialId: null },
+  { to: "/game/rankings", icon: "/assets/icons/building-commercial.png", label: "Rankings", tutorialId: null },
+  { to: "/game/profile", icon: "/assets/icons/building-research-lab.png", label: "Profile", tutorialId: null },
+  { to: "/game/help", icon: "help", label: "Help", tutorialId: "nav-help" },
 ];
 
 interface SidebarProps {
@@ -92,6 +94,7 @@ export default function Sidebar({
             end={item.end}
             onClick={handleNavClick}
             title={collapsed && !mobileOpen ? item.label : undefined}
+            data-tutorial={item.tutorialId ?? undefined}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isActive
@@ -103,6 +106,10 @@ export default function Sidebar({
             {item.icon === "help" ? (
               <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : item.icon === "messages" ? (
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             ) : (
               <img

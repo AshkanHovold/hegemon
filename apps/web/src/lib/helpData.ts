@@ -17,6 +17,7 @@ export const HELP_CATEGORIES = [
   "Alliances",
   "Combat",
   "Rounds & Phases",
+  "Progression",
 ] as const;
 
 export const HELP_ARTICLES: HelpArticle[] = [
@@ -424,6 +425,77 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Economic score is based on your resources, buildings, population, and tech points.",
       "Rankings can be viewed by Overall, Military, or Economic categories.",
       "Alliance rankings aggregate all members' scores. Coordinate with your alliance to dominate the leaderboard.",
+    ],
+  },
+
+  // ── Progression ────────────────────────────────────────────────
+  {
+    id: "achievements",
+    title: "Achievements",
+    category: "Progression",
+    icon: "resource-tech",
+    summary: "Unlock achievements by reaching milestones.",
+    content: [
+      "Achievements are milestones that track your progress in the game.",
+      "There are 14 achievements covering building, military, economy, espionage, trading, and diplomacy.",
+      "Unlocked achievements are displayed on your profile and in the Achievements page.",
+      "Examples: 'First Blood' (win your first attack), 'Tycoon' (accumulate 100,000 cash), 'Spy Master' (use all 8 cyber ops).",
+      "Achievements are checked automatically when you perform actions in the game.",
+    ],
+  },
+  {
+    id: "missions",
+    title: "Starter Missions",
+    category: "Progression",
+    icon: "building-commercial",
+    summary: "Complete missions to earn bonus resources.",
+    content: [
+      "When you create your nation, you receive 6 starter missions that guide you through the basics.",
+      "Each mission has a specific objective (e.g. 'Upgrade Commercial to Level 3') and a reward in cash or materials.",
+      "Your mission progress is tracked automatically. Check the Dashboard to see your current missions.",
+      "Once a mission is completed, click 'Claim' to receive the reward.",
+      "Missions are a great way to get a head start and learn the game mechanics.",
+    ],
+  },
+  {
+    id: "daily-login",
+    title: "Daily Login Bonus",
+    category: "Progression",
+    icon: "resource-cash",
+    summary: "Log in daily to earn bonus resources.",
+    content: [
+      "Each day you log in, you can claim a daily bonus of cash and materials.",
+      "Your streak increases each consecutive day you claim the bonus.",
+      "Higher streaks give better rewards. Missing a day resets your streak.",
+      "Check the Dashboard for the daily claim button.",
+    ],
+  },
+  {
+    id: "messages",
+    title: "Messaging",
+    category: "Progression",
+    icon: "building-intelligence-hq",
+    summary: "Send and receive messages from other players.",
+    content: [
+      "Use the Messages page to communicate with other nations.",
+      "You can send messages to any nation by searching for their name.",
+      "Messages have a subject and body. You can reply to received messages.",
+      "Unread messages are highlighted with a blue indicator.",
+      "There is a rate limit of 20 messages per hour to prevent spam.",
+    ],
+  },
+  {
+    id: "unit-advantages",
+    title: "Unit Type Advantages",
+    category: "Combat",
+    icon: "unit-armor",
+    summary: "Each unit type has strengths and weaknesses.",
+    content: [
+      "Combat uses a rock-paper-scissors system where each troop type has advantages and disadvantages.",
+      "Infantry beats Drones (1.3x damage), Armor beats Infantry, Air Force beats Armor, Drones beat Air Force.",
+      "Navy provides balanced support but excels at coastal operations.",
+      "When your troops have a type advantage, they deal 30% more damage. When disadvantaged, they deal 30% less.",
+      "A well-balanced army composition is often more effective than specializing in one unit type.",
     ],
   },
 ];

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import ResourceBar from "./ResourceBar";
+import TickCountdown from "./TickCountdown";
 import GameIcon from "./GameIcon";
 import { formatNumber, timeAgo } from "../lib/format";
 import { api } from "../lib/api";
@@ -65,7 +66,7 @@ export default function TopBar({ nation }: TopBarProps) {
   }, [showEvents]);
 
   return (
-    <div className="flex items-center gap-2 flex-wrap bg-gray-950/80 backdrop-blur border-b border-gray-800 px-4 py-2">
+    <div className="flex items-center gap-2 flex-wrap bg-gray-950/80 backdrop-blur border-b border-gray-800 px-4 py-2" data-tutorial="resource-bar">
       <ResourceBar
         iconName="resource-cash"
         label="Cash"
@@ -133,6 +134,9 @@ export default function TopBar({ nation }: TopBarProps) {
           </div>
         )}
       </div>
+
+      {/* Tick countdown */}
+      <TickCountdown />
 
       {/* Energy bar - special treatment */}
       <div className="flex items-center gap-2 rounded-full bg-gray-900/80 border border-gray-800 px-3 py-1 text-sm">

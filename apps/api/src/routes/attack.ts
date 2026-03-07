@@ -23,6 +23,32 @@ const UNIT_TYPES: UnitType[] = [
   "NAVY",
 ];
 
+// Rock-paper-scissors unit type advantages
+const TYPE_ADVANTAGE: Record<string, string[]> = {
+  INFANTRY: ["DRONES"],       // infantry beats drones
+  ARMOR: ["INFANTRY"],        // armor beats infantry
+  AIR_FORCE: ["ARMOR"],       // air force beats armor
+  DRONES: ["AIR_FORCE"],      // drones beat air force
+  NAVY: ["ARMOR", "INFANTRY"], // navy beats armor and infantry
+};
+const ADVANTAGE_MULTIPLIER = 1.3;
+const DISADVANTAGE_MULTIPLIER = 0.7;
+
+// Build reverse lookup: what types is each type weak against?
+function getTypeWeaknesses(): Record<string, string[]> {
+  const weaknesses: Record<string, string[]> = {};
+  for (const ut of UNIT_TYPES) weaknesses[ut] = [];
+  for (const [attacker, targets] of Object.entries(TYPE_ADVANTAGE)) {
+    for (const target of targets) {
+      if (!weaknesses[target]) weaknesses[target] = [];
+      weaknesses[target].push(attacker);
+    }
+  }
+  return weaknesses;
+}
+
+const TYPE_WEAKNESS = getTypeWeaknesses();
+
 /** Compute total ATK or DEF power for a set of troop counts */
 function totalPower(
   troops: { type: string; count: number }[],
@@ -32,6 +58,54 @@ function totalPower(
     const s = TROOP_STATS[t.type as UnitType];
     return sum + t.count * (s?.[stat] ?? 0);
   }, 0);
+}
+
+/**
+ * Calculate per-unit-type attack power with matchup bonuses.
+ * Each attacker unit type gets a multiplier based on the composition of defender forces.
+ */
+function calculateMatchupPower(
+  attackerTroops: { type: string; count: number }[],
+  defenderTroops: { type: string; count: number }[],
+): { totalPower: number; matchups: Record<string, { basePower: number; multiplier: number; effectivePower: number }> } {
+  const totalDefCount = defenderTroops.reduce((s, t) => s + t.count, 0);
+  const matchups: Record<string, { basePower: number; multiplier: number; effectivePower: number }> = {};
+  let total = 0;
+
+  for (const atkTroop of attackerTroops) {
+    if (atkTroop.count <= 0) continue;
+    const stats = TROOP_STATS[atkTroop.type as UnitType];
+    if (!stats) continue;
+
+    const basePower = atkTroop.count * stats.atk;
+    let multiplier = 1.0;
+
+    if (totalDefCount > 0) {
+      // Calculate weighted multiplier based on defender composition
+      let weightedMult = 0;
+      for (const defTroop of defenderTroops) {
+        if (defTroop.count <= 0) continue;
+        const defRatio = defTroop.count / totalDefCount;
+        const advantages = TYPE_ADVANTAGE[atkTroop.type] || [];
+        const weaknesses = TYPE_WEAKNESS[atkTroop.type] || [];
+
+        if (advantages.includes(defTroop.type)) {
+          weightedMult += defRatio * ADVANTAGE_MULTIPLIER;
+        } else if (weaknesses.includes(defTroop.type)) {
+          weightedMult += defRatio * DISADVANTAGE_MULTIPLIER;
+        } else {
+          weightedMult += defRatio * 1.0;
+        }
+      }
+      multiplier = weightedMult;
+    }
+
+    const effectivePower = Math.round(basePower * multiplier);
+    matchups[atkTroop.type] = { basePower, multiplier: Math.round(multiplier * 100) / 100, effectivePower };
+    total += effectivePower;
+  }
+
+  return { totalPower: total, matchups };
 }
 
 export async function attackRoutes(app: FastifyInstance) {
@@ -156,8 +230,15 @@ export async function attackRoutes(app: FastifyInstance) {
         count: forcesSent[ut],
       }));
 
-      const attackPower = totalPower(selectedTroops, "atk");
-      let defensePower = totalPower(defender.troops, "def");
+      // Calculate attack power with unit type matchup bonuses
+      const attackMatchup = calculateMatchupPower(selectedTroops, defender.troops);
+      const attackPower = attackMatchup.totalPower;
+
+      // Calculate defense power with matchup bonuses (defender vs attacker)
+      const defenseMatchup = calculateMatchupPower(defender.troops, selectedTroops);
+      let defensePower = defenseMatchup.totalPower > 0
+        ? defenseMatchup.totalPower
+        : totalPower(defender.troops, "def");
 
       // Fortification bonus from MISSILE_DEFENSE
       const missileDef = defender.buildings.find(
@@ -300,6 +381,10 @@ export async function attackRoutes(app: FastifyInstance) {
           defenderLosses,
           lootCash,
           lootMaterials,
+          matchups: {
+            attacker: attackMatchup.matchups,
+            defender: defenseMatchup.matchups,
+          },
         },
         defender: {
           name: defender.name,

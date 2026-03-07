@@ -158,6 +158,9 @@ export default function Rankings() {
       })()
     : null;
 
+  // Get #1 ranked player for spotlight
+  const topPlayer = sorted.length > 0 ? sorted[0] : null;
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
@@ -166,6 +169,29 @@ export default function Rankings() {
           <p className="text-gray-500 text-sm mt-1">{subtitle}</p>
         )}
       </div>
+
+      {/* #1 Player Spotlight */}
+      {topPlayer && !loading && viewMode === "individual" && (
+        <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/30 rounded-xl p-5 flex items-center gap-4">
+          <div className="text-3xl shrink-0">
+            <svg className="w-10 h-10 text-amber-400" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-xs text-amber-400/70 uppercase tracking-wider font-semibold mb-0.5">
+              #1 Player Spotlight
+            </div>
+            <div className="text-xl font-bold text-white">{topPlayer.name}</div>
+            <div className="text-sm text-gray-400">
+              {formatScore(topPlayer[sortKey])} {filter === "military" ? "military" : filter === "economic" ? "economic" : "score"}
+              {topPlayer.alliance && (
+                <span className="text-blue-400 ml-2">[{topPlayer.alliance.tag}]</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search + Tab selector */}
       <div className="flex items-center gap-4 flex-wrap">
@@ -297,12 +323,39 @@ export default function Rankings() {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-gray-200 font-medium">
-                          {r.name}
-                          {isYou && (
-                            <span className="text-xs text-blue-400 ml-1.5">
-                              (you)
-                            </span>
-                          )}
+                          <span className="inline-flex items-center gap-1">
+                            {r.name}
+                            {isYou && (
+                              <span className="text-xs text-blue-400 ml-0.5">
+                                (you)
+                              </span>
+                            )}
+                            {/* Rising/falling indicator based on score gap to neighbors */}
+                            {(() => {
+                              const idx = filteredSorted.indexOf(r);
+                              const prev = idx > 0 ? filteredSorted[idx - 1] : null;
+                              const next = idx < filteredSorted.length - 1 ? filteredSorted[idx + 1] : null;
+                              const gap = next ? r[sortKey] - next[sortKey] : 0;
+                              const aboveGap = prev ? prev[sortKey] - r[sortKey] : Infinity;
+                              if (gap > 0 && aboveGap > gap * 2) {
+                                // Close to player below, far from player above = falling
+                                return (
+                                  <svg className="w-3 h-3 text-red-400 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7 10l5 5 5-5H7z" />
+                                  </svg>
+                                );
+                              }
+                              if (aboveGap < gap * 0.5 && prev) {
+                                // Close to player above = rising
+                                return (
+                                  <svg className="w-3 h-3 text-emerald-400 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7 14l5-5 5 5H7z" />
+                                  </svg>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </span>
                         </td>
                         <td className="px-5 py-3 text-gray-500 text-xs font-mono">
                           {r.alliance ? `[${r.alliance.tag}]` : "-"}

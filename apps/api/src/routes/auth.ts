@@ -131,6 +131,67 @@ export async function authRoutes(app: FastifyInstance) {
     });
   });
 
+  // GET /auth/stats - cross-round player stats
+  app.get("/auth/stats", async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return reply.status(401).send({ error: "No token provided" });
+    }
+
+    try {
+      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as {
+        sub: string;
+      };
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: {
+          id: true,
+          username: true,
+          totalWins: true,
+          totalLosses: true,
+          roundsPlayed: true,
+          bestRank: true,
+        },
+      });
+
+      if (!user) {
+        return reply.status(401).send({ error: "User not found" });
+      }
+
+      // Get current round nation stats
+      const round = await prisma.round.findFirst({ where: { active: true } });
+      let nationStats = null;
+      if (round) {
+        const nation = await prisma.nation.findUnique({
+          where: { userId_roundId: { userId: user.id, roundId: round.id } },
+          select: {
+            id: true,
+            name: true,
+            cash: true,
+            materials: true,
+            techPoints: true,
+            population: true,
+          },
+        });
+        if (nation) {
+          nationStats = nation;
+        }
+      }
+
+      return reply.send({
+        stats: {
+          totalWins: user.totalWins,
+          totalLosses: user.totalLosses,
+          roundsPlayed: user.roundsPlayed,
+          bestRank: user.bestRank,
+        },
+        currentNation: nationStats,
+      });
+    } catch {
+      return reply.status(401).send({ error: "Invalid token" });
+    }
+  });
+
   app.get("/auth/me", async (req, reply) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {

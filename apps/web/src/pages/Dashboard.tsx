@@ -82,6 +82,26 @@ const QUICK_ACTIONS = [
   },
 ];
 
+interface Mission {
+  id: string;
+  title: string;
+  icon: string;
+  progress: number;
+  goal: number;
+  reward: string;
+}
+
+interface WorldNewsItem {
+  id: string;
+  message: string;
+  createdAt: string;
+}
+
+interface DailyStatus {
+  claimable: boolean;
+  rewards?: { cash?: number; materials?: number; food?: number; tech?: number };
+}
+
 export default function Dashboard() {
   const { nation, round, refreshNation } = useGame();
   const { user } = useAuth();
@@ -89,7 +109,74 @@ export default function Dashboard() {
   const [devMsg, setDevMsg] = useState("");
   const [devOpen, setDevOpen] = useState(false);
 
+  // Missions state
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [missionsLoading, setMissionsLoading] = useState(true);
+
+  // World news state
+  const [worldNews, setWorldNews] = useState<WorldNewsItem[]>([]);
+
+  // Daily bonus state
+  const [dailyStatus, setDailyStatus] = useState<DailyStatus | null>(null);
+  const [claimingDaily, setClaimingDaily] = useState(false);
+  const [dailyRewards, setDailyRewards] = useState<DailyStatus["rewards"] | null>(null);
+
   useEffect(() => { document.title = "Dashboard - Hegemon"; }, []);
+
+  // Fetch missions
+  useEffect(() => {
+    async function fetchMissions() {
+      try {
+        const data = await api.get<{ missions: Mission[] }>("/nation/missions");
+        setMissions(data.missions);
+      } catch {
+        // endpoint may not exist yet
+      } finally {
+        setMissionsLoading(false);
+      }
+    }
+    fetchMissions();
+  }, []);
+
+  // Fetch world news
+  useEffect(() => {
+    async function fetchNews() {
+      try {
+        const data = await api.get<{ news: WorldNewsItem[] }>("/world/news");
+        setWorldNews(data.news);
+      } catch {
+        // endpoint may not exist yet
+      }
+    }
+    fetchNews();
+  }, []);
+
+  // Fetch daily bonus status
+  useEffect(() => {
+    async function fetchDailyStatus() {
+      try {
+        const data = await api.get<DailyStatus>("/nation/daily-status");
+        setDailyStatus(data);
+      } catch {
+        // endpoint may not exist yet
+      }
+    }
+    fetchDailyStatus();
+  }, []);
+
+  async function handleClaimDaily() {
+    setClaimingDaily(true);
+    try {
+      const data = await api.post<{ rewards: DailyStatus["rewards"] }>("/nation/daily-claim");
+      setDailyRewards(data.rewards);
+      setDailyStatus({ claimable: false });
+      await refreshNation();
+    } catch {
+      // endpoint may not exist yet
+    } finally {
+      setClaimingDaily(false);
+    }
+  }
 
   if (!nation || !round) return null;
 
@@ -193,14 +280,50 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Welcome */}
-      <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">
-          Welcome back, {user?.username ?? "Commander"}
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {nation.name} &middot; Alliance: {allianceName}
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Welcome back, {user?.username ?? "Commander"}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {nation.name} &middot; Alliance: {allianceName}
+          </p>
+        </div>
+        {/* Daily Bonus */}
+        {dailyStatus?.claimable && (
+          <button
+            onClick={handleClaimDaily}
+            disabled={claimingDaily}
+            className="bg-amber-600 hover:bg-amber-500 disabled:bg-amber-600/50 text-white font-semibold px-4 py-2 rounded-lg transition-colors text-sm animate-glow-pulse"
+          >
+            {claimingDaily ? "Claiming..." : "Claim Daily Bonus"}
+          </button>
+        )}
       </div>
+
+      {/* Daily Rewards Modal */}
+      {dailyRewards && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-amber-400 mb-2">Daily Bonus Claimed!</h3>
+          <div className="flex gap-4 text-xs text-gray-300">
+            {dailyRewards.cash != null && dailyRewards.cash > 0 && (
+              <span>+{formatNumber(dailyRewards.cash)} Cash</span>
+            )}
+            {dailyRewards.materials != null && dailyRewards.materials > 0 && (
+              <span>+{formatNumber(dailyRewards.materials)} Materials</span>
+            )}
+            {dailyRewards.food != null && dailyRewards.food > 0 && (
+              <span>+{formatNumber(dailyRewards.food)} Food</span>
+            )}
+            {dailyRewards.tech != null && dailyRewards.tech > 0 && (
+              <span>+{formatNumber(dailyRewards.tech)} Tech</span>
+            )}
+          </div>
+          <button onClick={() => setDailyRewards(null)} className="text-xs text-gray-500 hover:text-gray-400 mt-2">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Round status */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -222,6 +345,44 @@ export default function Dashboard() {
             style={{ width: `${roundPercent}%` }}
           />
         </div>
+      </div>
+
+      {/* Missions */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          Active Missions
+        </h2>
+        {missionsLoading ? (
+          <div className="text-xs text-gray-600 text-center py-3">Loading missions...</div>
+        ) : missions.length === 0 ? (
+          <div className="text-xs text-gray-600 text-center py-3">No active missions. Check back soon!</div>
+        ) : (
+          <div className="space-y-2">
+            {missions.map((m) => (
+              <div key={m.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2.5">
+                <GameIcon name={m.icon} size={22} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-200 font-medium truncate">{m.title}</span>
+                    <span className="text-[10px] text-amber-400 ml-2 shrink-0">{m.reward}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 rounded-full transition-all"
+                      style={{ width: `${m.goal > 0 ? Math.min(100, (m.progress / m.goal) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-0.5 tabular-nums">
+                    {m.progress} / {m.goal}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Resource cards */}
@@ -327,6 +488,30 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* World News Ticker */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="px-4 py-2 border-b border-gray-800">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">World News</h2>
+        </div>
+        <div className="relative h-8 overflow-hidden">
+          {worldNews.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-xs text-gray-600">
+              No world events yet.
+            </div>
+          ) : (
+            <div className="absolute whitespace-nowrap flex items-center h-full animate-scroll-left">
+              {/* Duplicate for seamless loop */}
+              {[...worldNews, ...worldNews].map((item, i) => (
+                <span key={`${item.id}-${i}`} className="inline-flex items-center gap-2 mx-6 text-xs text-gray-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                  {item.message}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Dev tools - collapsible (dev only) */}
       {import.meta.env.DEV && (

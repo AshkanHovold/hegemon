@@ -17,6 +17,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   nations   Nation[]
+
+  // Cross-round stats
+  totalWins    Int @default(0)
+  totalLosses  Int @default(0)
+  roundsPlayed Int @default(0)
+  bestRank     Int @default(0)
 }
 
 // ─── Rounds ─────────────────────────────────────────────
@@ -87,6 +93,14 @@ model Nation {
   sellOrders      MarketOrder[] @relation("seller")
 
   allianceMembership AllianceMember?
+
+  achievements       Achievement[]
+  missions           Mission[]
+  dailyLogins        DailyLogin[]
+  sentMessages       Message[] @relation("sentMessages")
+  receivedMessages   Message[] @relation("receivedMessages")
+
+  conscriptionRatio  Float    @default(0.8) // civilian percentage (0.1 to 0.9)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -304,4 +318,62 @@ enum AllianceRole {
   MINISTER_OF_INTELLIGENCE
   MINISTER_OF_TRADE
   MEMBER
+}
+
+// ─── Achievements ────────────────────────────────────────
+
+model Achievement {
+  id         String   @id @default(cuid())
+  nationId   String
+  nation     Nation   @relation(fields: [nationId], references: [id])
+  type       String   // e.g. "FIRST_BLOOD", "TYCOON", "ARCHITECT", etc.
+  unlockedAt DateTime @default(now())
+
+  @@unique([nationId, type])
+}
+
+// ─── Missions ────────────────────────────────────────────
+
+model Mission {
+  id              String    @id @default(cuid())
+  nationId        String
+  nation          Nation    @relation(fields: [nationId], references: [id])
+  type            String    // mission type key
+  progress        Int       @default(0)
+  target          Int       // goal amount
+  rewardCash      Int       @default(0)
+  rewardMaterials Int       @default(0)
+  completed       Boolean   @default(false)
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([nationId, type])
+}
+
+// ─── Daily Logins ────────────────────────────────────────
+
+model DailyLogin {
+  id        String   @id @default(cuid())
+  nationId  String
+  nation    Nation   @relation(fields: [nationId], references: [id])
+  day       Int      // streak day (1, 2, 3...)
+  claimedAt DateTime @default(now())
+
+  @@index([nationId])
+}
+
+// ─── Messages ────────────────────────────────────────────
+
+model Message {
+  id         String   @id @default(cuid())
+  senderId   String
+  sender     Nation   @relation("sentMessages", fields: [senderId], references: [id])
+  receiverId String
+  receiver   Nation   @relation("receivedMessages", fields: [receiverId], references: [id])
+  subject    String
+  body       String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([receiverId, read])
 }

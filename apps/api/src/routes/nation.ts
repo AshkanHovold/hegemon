@@ -1,6 +1,11 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import {
+  BUILDING_PRODUCTION,
+  TICK_INTERVAL_MS,
+} from "../config/game.js";
+import type { BuildingType } from "../generated/prisma/enums.js";
 
 interface CreateNationBody {
   name: string;
@@ -233,6 +238,261 @@ export async function nationRoutes(app: FastifyInstance) {
     return reply.send({ nation });
   });
 
+  // ── Daily Login Bonus ────────────────────────────────────────
+  const DAILY_REWARDS: Record<number, { cash: number; materials: number; tech: number }> = {
+    1: { cash: 1000, materials: 0, tech: 0 },
+    2: { cash: 0, materials: 500, tech: 0 },
+    3: { cash: 2000, materials: 1000, tech: 0 },
+    4: { cash: 0, materials: 0, tech: 200 },
+    5: { cash: 5000, materials: 2000, tech: 500 },
+    6: { cash: 3000, materials: 0, tech: 0 },
+  };
+  const DAY_7_PLUS_REWARD = { cash: 10000, materials: 5000, tech: 1000 };
+
+  function getRewardForDay(day: number): { cash: number; materials: number; tech: number } {
+    if (day >= 7) return DAY_7_PLUS_REWARD;
+    return DAILY_REWARDS[day] || DAILY_REWARDS[1];
+  }
+
+  function isSameDay(d1: Date, d2: Date): boolean {
+    return (
+      d1.getUTCFullYear() === d2.getUTCFullYear() &&
+      d1.getUTCMonth() === d2.getUTCMonth() &&
+      d1.getUTCDate() === d2.getUTCDate()
+    );
+  }
+
+  function isYesterday(d1: Date, today: Date): boolean {
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    return isSameDay(d1, yesterday);
+  }
+
+  app.post("/nation/daily-claim", async (req, reply) => {
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+    });
+    if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+
+    const now = new Date();
+
+    // Get last login claim
+    const lastLogin = await prisma.dailyLogin.findFirst({
+      where: { nationId: nation.id },
+      orderBy: { claimedAt: "desc" },
+    });
+
+    // Check if already claimed today
+    if (lastLogin && isSameDay(lastLogin.claimedAt, now)) {
+      const nextClaimAt = new Date(now);
+      nextClaimAt.setUTCDate(nextClaimAt.getUTCDate() + 1);
+      nextClaimAt.setUTCHours(0, 0, 0, 0);
+      return reply.status(400).send({
+        error: "Already claimed today",
+        claimed: false,
+        nextClaimAt,
+      });
+    }
+
+    // Determine streak
+    let day = 1;
+    if (lastLogin && isYesterday(lastLogin.claimedAt, now)) {
+      day = lastLogin.day + 1;
+    }
+
+    const rewards = getRewardForDay(day);
+
+    // Create login record and grant rewards
+    const updateData: Record<string, unknown> = {};
+    if (rewards.cash > 0) updateData.cash = { increment: rewards.cash };
+    if (rewards.materials > 0) updateData.materials = { increment: rewards.materials };
+    if (rewards.tech > 0) updateData.techPoints = { increment: rewards.tech };
+
+    await prisma.$transaction([
+      prisma.dailyLogin.create({
+        data: { nationId: nation.id, day },
+      }),
+      prisma.nation.update({
+        where: { id: nation.id },
+        data: updateData,
+      }),
+    ]);
+
+    const nextClaimAt = new Date(now);
+    nextClaimAt.setUTCDate(nextClaimAt.getUTCDate() + 1);
+    nextClaimAt.setUTCHours(0, 0, 0, 0);
+
+    return reply.send({ claimed: true, day, rewards, nextClaimAt });
+  });
+
+  app.get("/nation/daily-status", async (req, reply) => {
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+    });
+    if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+
+    const now = new Date();
+    const lastLogin = await prisma.dailyLogin.findFirst({
+      where: { nationId: nation.id },
+      orderBy: { claimedAt: "desc" },
+    });
+
+    const claimableToday = !lastLogin || !isSameDay(lastLogin.claimedAt, now);
+
+    let currentStreak = 0;
+    if (lastLogin) {
+      if (isSameDay(lastLogin.claimedAt, now) || isYesterday(lastLogin.claimedAt, now)) {
+        currentStreak = lastLogin.day;
+      }
+    }
+
+    const nextClaimAt = claimableToday
+      ? null
+      : (() => {
+          const next = new Date(now);
+          next.setUTCDate(next.getUTCDate() + 1);
+          next.setUTCHours(0, 0, 0, 0);
+          return next;
+        })();
+
+    return reply.send({
+      currentStreak,
+      claimableToday,
+      lastClaimedAt: lastLogin?.claimedAt ?? null,
+      nextClaimAt,
+    });
+  });
+
+  // ── While You Were Away ─────────────────────────────────────
+  app.get<{ Querystring: { since?: string } }>("/nation/away-summary", async (req, reply) => {
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      include: { buildings: true },
+    });
+    if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+
+    const sinceParam = req.query.since;
+    if (!sinceParam) {
+      return reply.status(400).send({ error: "since query param (ISO timestamp) is required" });
+    }
+    const since = new Date(sinceParam);
+    if (isNaN(since.getTime())) {
+      return reply.status(400).send({ error: "Invalid since timestamp" });
+    }
+
+    const now = new Date();
+    const elapsedMs = now.getTime() - since.getTime();
+    const ticksElapsed = Math.floor(elapsedMs / TICK_INTERVAL_MS);
+
+    // Calculate production from buildings
+    let cashProduced = 0;
+    let materialsProduced = 0;
+    let techProduced = 0;
+    let foodProduced = 0;
+
+    for (const b of nation.buildings) {
+      if (b.building) continue;
+      const btype = b.type as BuildingType;
+      switch (btype) {
+        case "COMMERCIAL":
+          cashProduced += BUILDING_PRODUCTION.COMMERCIAL.cash * b.level * ticksElapsed;
+          break;
+        case "FACTORY":
+          materialsProduced += BUILDING_PRODUCTION.FACTORY.materials * b.level * ticksElapsed;
+          break;
+        case "RESEARCH_LAB":
+          techProduced += BUILDING_PRODUCTION.RESEARCH_LAB.techPoints * b.level * ticksElapsed;
+          break;
+        case "FARM":
+          foodProduced += BUILDING_PRODUCTION.FARM.food * b.level * ticksElapsed;
+          break;
+      }
+    }
+
+    // Attacks received since then
+    const attacksReceived = await prisma.attack.findMany({
+      where: {
+        defenderId: nation.id,
+        createdAt: { gte: since },
+        resolved: true,
+      },
+      include: {
+        attacker: { select: { name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Market orders filled since then
+    const ordersFilled = await prisma.marketOrder.findMany({
+      where: {
+        nationId: nation.id,
+        status: "FILLED",
+        filledAt: { gte: since },
+      },
+      orderBy: { filledAt: "desc" },
+    });
+
+    return reply.send({
+      since: since.toISOString(),
+      ticksElapsed,
+      resourcesProduced: {
+        cash: cashProduced,
+        materials: materialsProduced,
+        techPoints: techProduced,
+        food: foodProduced,
+      },
+      attacksReceived: attacksReceived.map((a) => ({
+        attackerName: a.attacker.name,
+        attackerWon: a.attackerWon,
+        lootCash: a.lootCash,
+        lootMaterials: a.lootMaterials,
+        createdAt: a.createdAt,
+      })),
+      ordersFilled: ordersFilled.map((o) => ({
+        side: o.side,
+        commodity: o.commodity,
+        price: o.price,
+        quantity: o.quantity,
+        filledAt: o.filledAt,
+      })),
+    });
+  });
+
+  // ── Conscription ────────────────────────────────────────────
+  app.post<{ Body: { ratio: number } }>("/nation/conscription", async (req, reply) => {
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.status(404).send({ error: "No active round" });
+
+    const nation = await prisma.nation.findUnique({
+      where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+    });
+    if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+
+    const { ratio } = req.body;
+    if (typeof ratio !== "number" || ratio < 0.1 || ratio > 0.9) {
+      return reply.status(400).send({ error: "Ratio must be between 0.1 and 0.9" });
+    }
+
+    const updated = await prisma.nation.update({
+      where: { id: nation.id },
+      data: { conscriptionRatio: ratio },
+    });
+
+    return reply.send({
+      conscriptionRatio: updated.conscriptionRatio,
+      message: `Civilian ratio set to ${(ratio * 100).toFixed(0)}%`,
+    });
+  });
+
   // ── Rename nation ─────────────────────────────────────────────
   app.patch<{ Body: { name: string } }>("/nation/name", async (req, reply) => {
     const { name } = req.body;
@@ -268,5 +528,27 @@ export async function nationRoutes(app: FastifyInstance) {
     });
 
     return reply.send({ nation: { id: updated.id, name: updated.name } });
+  });
+
+  // GET /nation/search?q=... - search nations by name
+  app.get<{ Querystring: { q?: string } }>("/nation/search", async (req, reply) => {
+    const q = req.query.q?.trim();
+    if (!q || q.length < 2) {
+      return reply.send({ nations: [] });
+    }
+
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    if (!round) return reply.send({ nations: [] });
+
+    const nations = await prisma.nation.findMany({
+      where: {
+        roundId: round.id,
+        name: { contains: q, mode: "insensitive" },
+      },
+      select: { id: true, name: true },
+      take: 10,
+    });
+
+    return reply.send({ nations });
   });
 }

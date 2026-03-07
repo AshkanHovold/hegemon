@@ -71,9 +71,11 @@ export default function Military() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [attacking, setAttacking] = useState(false);
+  const [battleAnimating, setBattleAnimating] = useState(false);
   const [lastResult, setLastResult] = useState<
     (AttackResult & { defenderName: string }) | null
   >(null);
+  const [resultRevealed, setResultRevealed] = useState(false);
 
   // Troop selection for attack
   const [attackTroops, setAttackTroops] = useState<Record<UnitType, number>>({
@@ -209,7 +211,9 @@ export default function Military() {
     if (!selectedTarget) return;
     setError("");
     setAttacking(true);
+    setBattleAnimating(true);
     setLastResult(null);
+    setResultRevealed(false);
     setShowConfirm(false);
     try {
       const data = await api.post<{
@@ -219,7 +223,12 @@ export default function Military() {
         defenderId: selectedTarget.id,
         troops: attackTroops,
       });
+      // Show battle animation for 3 seconds before revealing result
+      await new Promise((r) => setTimeout(r, 3000));
+      setBattleAnimating(false);
       setLastResult({ ...data.attack, defenderName: data.defender.name });
+      // Trigger the reveal animation
+      requestAnimationFrame(() => setResultRevealed(true));
       if (data.attack.attackerWon) {
         toast("success", `Victory against ${data.defender.name}!`);
       } else {
@@ -229,6 +238,7 @@ export default function Military() {
       fetchNations();
       fetchAttackLog();
     } catch (err) {
+      setBattleAnimating(false);
       if (err instanceof ApiError) {
         toast("error", err.message);
         setError(err.message);
@@ -274,13 +284,29 @@ export default function Military() {
         </div>
       )}
 
+      {/* Battle In Progress Animation */}
+      {battleAnimating && (
+        <div className="rounded-xl p-6 border border-gray-700 bg-gray-900 text-center">
+          <div className="animate-battle inline-block mb-3">
+            <svg className="w-12 h-12 text-red-400 animate-battle-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-300 font-medium">Battle in progress...</p>
+          <p className="text-xs text-gray-500 mt-1">Awaiting battlefield report</p>
+        </div>
+      )}
+
       {/* Attack Result Banner */}
       {lastResult && (
         <div
-          className={`rounded-xl p-4 border ${
+          className={`rounded-xl p-4 border transition-all duration-500 ${
+            resultRevealed ? "animate-slide-up" : "opacity-0"
+          } ${
             lastResult.attackerWon
-              ? "bg-emerald-500/10 border-emerald-500/30"
-              : "bg-red-500/10 border-red-500/30"
+              ? "bg-emerald-500/10 border-emerald-500/30 animate-victory"
+              : "bg-red-500/10 border-red-500/30 animate-defeat"
           }`}
         >
           <div className="flex items-center gap-3 mb-2">

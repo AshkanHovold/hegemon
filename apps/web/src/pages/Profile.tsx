@@ -1,8 +1,18 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
 import { useToast } from "../components/Toast";
+import NationEmblem, { useNationEmblem } from "../components/NationEmblem";
+import EmblemPicker from "../components/EmblemPicker";
+
+interface LifetimeStats {
+  roundsPlayed: number;
+  totalWins: number;
+  totalLosses: number;
+  bestRank: number | null;
+}
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -10,6 +20,11 @@ export default function Profile() {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const { emblem, setEmblem } = useNationEmblem();
+  const [showEmblemPicker, setShowEmblemPicker] = useState(false);
+  const [achievementCount, setAchievementCount] = useState<number | null>(null);
+  const [lifetimeStats, setLifetimeStats] = useState<LifetimeStats | null>(null);
+  const [loginStreak, setLoginStreak] = useState<number | null>(null);
 
   const [nationName, setNationName] = useState("");
   const [email, setEmail] = useState("");
@@ -17,6 +32,45 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => { document.title = "Profile - Hegemon"; }, []);
+
+  // Fetch achievements count
+  useEffect(() => {
+    async function fetchAchievements() {
+      try {
+        const data = await api.get<{ achievements: unknown[] }>("/nation/achievements");
+        setAchievementCount(data.achievements.length);
+      } catch {
+        // API not available
+      }
+    }
+    fetchAchievements();
+  }, []);
+
+  // Fetch lifetime stats
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const data = await api.get<{ stats: LifetimeStats }>("/auth/stats");
+        setLifetimeStats(data.stats);
+      } catch {
+        // API not available
+      }
+    }
+    fetchStats();
+  }, []);
+
+  // Fetch login streak
+  useEffect(() => {
+    async function fetchStreak() {
+      try {
+        const data = await api.get<{ streak: number }>("/auth/login-streak");
+        setLoginStreak(data.streak);
+      } catch {
+        // API not available
+      }
+    }
+    fetchStreak();
+  }, []);
 
   const [notifications, setNotifications] = useState({
     attacks: true,
@@ -140,6 +194,137 @@ export default function Profile() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Emblem */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-white mb-4">Nation Emblem</h2>
+        <div className="flex items-center gap-4">
+          <NationEmblem color={emblem.color} symbol={emblem.symbol} size={64} />
+          <div>
+            <p className="text-xs text-gray-500 mb-2">
+              Your emblem represents your nation across the game.
+            </p>
+            <button
+              onClick={() => setShowEmblemPicker(true)}
+              className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors border border-gray-700"
+            >
+              Change Emblem
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showEmblemPicker && (
+        <EmblemPicker
+          current={emblem}
+          onSave={(config) => {
+            setEmblem(config);
+            setShowEmblemPicker(false);
+            toast("success", "Emblem updated");
+          }}
+          onClose={() => setShowEmblemPicker(false)}
+        />
+      )}
+
+      {/* Achievements Summary */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-white mb-3">Achievements</h2>
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-400">
+            {achievementCount !== null ? (
+              <>
+                <span className="text-lg font-bold text-amber-400">
+                  {achievementCount}
+                </span>{" "}
+                / 14 unlocked
+              </>
+            ) : (
+              <span className="text-gray-600">No data available</span>
+            )}
+          </div>
+          <Link
+            to="/game/achievements"
+            className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+          >
+            View All
+          </Link>
+        </div>
+      </div>
+
+      {/* Lifetime Stats */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-white mb-4">
+          Lifetime Stats
+        </h2>
+        {lifetimeStats ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-gray-800 rounded-lg p-3">
+              <div className="text-xs text-gray-500">Rounds Played</div>
+              <div className="text-lg font-bold text-blue-400 tabular-nums">
+                {lifetimeStats.roundsPlayed}
+              </div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-3">
+              <div className="text-xs text-gray-500">Total Wins</div>
+              <div className="text-lg font-bold text-emerald-400 tabular-nums">
+                {lifetimeStats.totalWins}
+              </div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-3">
+              <div className="text-xs text-gray-500">Total Losses</div>
+              <div className="text-lg font-bold text-red-400 tabular-nums">
+                {lifetimeStats.totalLosses}
+              </div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-3">
+              <div className="text-xs text-gray-500">Best Rank</div>
+              <div className="text-lg font-bold text-amber-400 tabular-nums">
+                {lifetimeStats.bestRank !== null
+                  ? `#${lifetimeStats.bestRank}`
+                  : "--"}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">
+            Stats will be available after completing your first round.
+          </p>
+        )}
+      </div>
+
+      {/* Daily Login Streak */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-white mb-3">
+          Daily Login Streak
+        </h2>
+        <div className="flex items-center gap-3">
+          <div className="bg-gray-800 rounded-lg px-4 py-3 flex items-center gap-3">
+            <svg
+              className="w-6 h-6 text-orange-400"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div>
+              <div className="text-2xl font-bold text-orange-400 tabular-nums">
+                {loginStreak !== null ? loginStreak : "--"}
+              </div>
+              <div className="text-xs text-gray-500">
+                {loginStreak === 1 ? "day" : "days"}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">
+            Log in every day to build your streak. Longer streaks may unlock
+            special rewards in future updates.
+          </p>
         </div>
       </div>
 
