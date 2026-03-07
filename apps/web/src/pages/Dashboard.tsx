@@ -84,21 +84,24 @@ const QUICK_ACTIONS = [
 
 interface Mission {
   id: string;
+  type: string;
   title: string;
-  icon: string;
+  desc: string;
   progress: number;
-  goal: number;
-  reward: string;
+  target: number;
+  rewardCash: number;
+  rewardMaterials: number;
+  completed: boolean;
 }
 
 interface WorldNewsItem {
-  id: string;
+  type: string;
   message: string;
-  createdAt: string;
+  timestamp: string;
 }
 
 interface DailyStatus {
-  claimable: boolean;
+  claimableToday: boolean;
   rewards?: { cash?: number; materials?: number; food?: number; tech?: number };
 }
 
@@ -142,8 +145,8 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchNews() {
       try {
-        const data = await api.get<{ news: WorldNewsItem[] }>("/world/news");
-        setWorldNews(data.news);
+        const data = await api.get<{ events: WorldNewsItem[] }>("/world/news");
+        setWorldNews(data.events ?? []);
       } catch {
         // endpoint may not exist yet
       }
@@ -169,7 +172,7 @@ export default function Dashboard() {
     try {
       const data = await api.post<{ rewards: DailyStatus["rewards"] }>("/nation/daily-claim");
       setDailyRewards(data.rewards);
-      setDailyStatus({ claimable: false });
+      setDailyStatus({ claimableToday: false });
       await refreshNation();
     } catch {
       // endpoint may not exist yet
@@ -290,7 +293,7 @@ export default function Dashboard() {
           </p>
         </div>
         {/* Daily Bonus */}
-        {dailyStatus?.claimable && (
+        {dailyStatus?.claimableToday && (
           <button
             onClick={handleClaimDaily}
             disabled={claimingDaily}
@@ -361,26 +364,31 @@ export default function Dashboard() {
           <div className="text-xs text-gray-600 text-center py-3">No active missions. Check back soon!</div>
         ) : (
           <div className="space-y-2">
-            {missions.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2.5">
-                <GameIcon name={m.icon} size={22} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-gray-200 font-medium truncate">{m.title}</span>
-                    <span className="text-[10px] text-amber-400 ml-2 shrink-0">{m.reward}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-amber-500 rounded-full transition-all"
-                      style={{ width: `${m.goal > 0 ? Math.min(100, (m.progress / m.goal) * 100) : 0}%` }}
-                    />
-                  </div>
-                  <div className="text-[10px] text-gray-500 mt-0.5 tabular-nums">
-                    {m.progress} / {m.goal}
+            {missions.filter((m) => !m.completed).map((m) => {
+              const rewardText = [
+                m.rewardCash > 0 ? `$${formatNumber(m.rewardCash)}` : "",
+                m.rewardMaterials > 0 ? `${formatNumber(m.rewardMaterials)} mat` : "",
+              ].filter(Boolean).join(" + ");
+              return (
+                <div key={m.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-200 font-medium truncate">{m.title}</span>
+                      <span className="text-[10px] text-amber-400 ml-2 shrink-0">{rewardText}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full transition-all"
+                        style={{ width: `${m.target > 0 ? Math.min(100, (m.progress / m.target) * 100) : 0}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-gray-500 mt-0.5 tabular-nums">
+                      {m.progress} / {m.target}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -503,7 +511,7 @@ export default function Dashboard() {
             <div className="absolute whitespace-nowrap flex items-center h-full animate-scroll-left">
               {/* Duplicate for seamless loop */}
               {[...worldNews, ...worldNews].map((item, i) => (
-                <span key={`${item.id}-${i}`} className="inline-flex items-center gap-2 mx-6 text-xs text-gray-400">
+                <span key={`news-${i}`} className="inline-flex items-center gap-2 mx-6 text-xs text-gray-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                   {item.message}
                 </span>

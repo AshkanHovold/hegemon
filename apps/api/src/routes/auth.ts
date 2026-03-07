@@ -8,8 +8,9 @@ const JWT_EXPIRES_IN = "7d";
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const registerAttempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_LOGIN_ATTEMPTS = 10;
-const MAX_REGISTER_ATTEMPTS = 5;
+const IS_DEV = process.env.NODE_ENV !== "production";
+const MAX_LOGIN_ATTEMPTS = IS_DEV ? 1000 : 10;
+const MAX_REGISTER_ATTEMPTS = IS_DEV ? 1000 : 5;
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 function checkRateLimit(
