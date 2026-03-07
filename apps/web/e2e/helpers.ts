@@ -35,7 +35,7 @@ export async function registerAndCreateNation(page: Page) {
   const { round } = await roundRes.json();
 
   // Create nation
-  const nationName = `TestNation-${uniqueId()}`;
+  const nationName = `TN${Date.now().toString(36)}${(++userCounter).toString(36)}`;
   const nationRes = await page.request.post(`${API_URL}/nation`, {
     data: { name: nationName, roundId: round.id },
     headers: { Authorization: `Bearer ${user.token}` },
@@ -50,7 +50,20 @@ export async function registerAndCreateNation(page: Page) {
   await page.goto("/game");
   await page.waitForLoadState("networkidle");
 
+  // Dismiss the tutorial overlay if it appears
+  await dismissTutorial(page);
+
   return { ...user, nationName };
+}
+
+/** Dismiss the tutorial overlay if visible. */
+export async function dismissTutorial(page: Page) {
+  const skipBtn = page.getByText("Skip Tutorial");
+  if (await skipBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await skipBtn.click();
+    // Wait for overlay to disappear
+    await skipBtn.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+  }
 }
 
 /** Log in via the actual login form UI. */

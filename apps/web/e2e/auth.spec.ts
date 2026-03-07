@@ -13,7 +13,7 @@ test.describe("Authentication", () => {
 
     // Should redirect to /game which then redirects to create-nation (no nation yet)
     await expect(page).toHaveURL(/create-nation/, { timeout: 10_000 });
-    await expect(page.getByText("Name Your Nation")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Found Your Nation" })).toBeVisible();
   });
 
   test("login with valid credentials → dashboard", async ({ page }) => {

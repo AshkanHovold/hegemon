@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { registerUser, registerAndCreateNation, navigateTo } from "./helpers";
+import { registerUser, registerAndCreateNation, navigateTo, dismissTutorial } from "./helpers";
 
 test.describe("Nation", () => {
   test("create nation via UI", async ({ page }) => {
@@ -14,12 +14,13 @@ test.describe("Nation", () => {
 
     await expect(page).toHaveURL(/create-nation/, { timeout: 10_000 });
 
-    const nationName = `UITestNation-${Date.now()}`;
+    const nationName = `UITest${Date.now().toString(36)}`;
     await page.getByPlaceholder("Iron Republic").fill(nationName);
     await page.getByRole("button", { name: "Found Your Nation" }).click();
 
     // Should redirect to dashboard
     await expect(page).toHaveURL(/\/game/, { timeout: 10_000 });
+    await dismissTutorial(page);
     await expect(page.getByText("Welcome back")).toBeVisible();
   });
 
