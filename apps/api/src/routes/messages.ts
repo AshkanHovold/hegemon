@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { wsManager } from "../ws.js";
 
 interface SendMessageBody {
   receiverId: string;
@@ -126,6 +127,13 @@ export async function messageRoutes(app: FastifyInstance) {
         subject,
         body,
       },
+    });
+
+    // Notify receiver in real-time
+    wsManager.sendTo(receiverId, "new_message", {
+      id: message.id,
+      senderName: nation.name,
+      subject: message.subject,
     });
 
     return reply.status(201).send({

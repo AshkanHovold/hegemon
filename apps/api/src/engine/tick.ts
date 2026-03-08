@@ -7,6 +7,7 @@ import {
   FOOD_PER_POP,
 } from "../config/game.js";
 import type { BuildingType } from "../generated/prisma/enums.js";
+import { wsManager } from "../ws.js";
 
 /**
  * Process a single game tick for all nations in the active round.
@@ -30,6 +31,7 @@ export async function processTick(): Promise<{ processed: number }> {
     include: {
       buildings: true,
       troops: true,
+      techNodes: true,
     },
   });
 
@@ -39,6 +41,7 @@ export async function processTick(): Promise<{ processed: number }> {
   const operations: ReturnType<typeof prisma.nation.update>[] = [];
   const buildingOps: ReturnType<typeof prisma.building.update>[] = [];
   const troopOps: ReturnType<typeof prisma.troop.update>[] = [];
+  const techOps: ReturnType<typeof prisma.techResearch.update>[] = [];
 
   for (const nation of nations) {
     // ── 1. Resource production from completed buildings ──────────────
@@ -165,6 +168,18 @@ export async function processTick(): Promise<{ processed: number }> {
       }
     }
 
+    // ── 7. Tech research completion ─────────────────────────────────
+    for (const t of nation.techNodes) {
+      if (t.researching && t.researchAt && t.researchAt <= now) {
+        techOps.push(
+          prisma.techResearch.update({
+            where: { id: t.id },
+            data: { researching: false, researchAt: null },
+          })
+        );
+      }
+    }
+
     // ── Queue nation update ─────────────────────────────────────────
     operations.push(
       prisma.nation.update({
@@ -186,7 +201,12 @@ export async function processTick(): Promise<{ processed: number }> {
   }
 
   // Execute all updates in a single transaction
-  await prisma.$transaction([...operations, ...buildingOps, ...troopOps]);
+  await prisma.$transaction([...operations, ...buildingOps, ...troopOps, ...techOps]);
+
+  // Broadcast tick updates to connected players
+  for (const nation of nations) {
+    wsManager.sendTo(nation.id, "tick", { timestamp: now.toISOString() });
+  }
 
   return { processed: nations.length };
 }
@@ -196,23 +216,28 @@ export async function processTick(): Promise<{ processed: number }> {
  */
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
-export function startTickEngine() {
+let logger: { info: (...args: unknown[]) => void; error: (...args: unknown[]) => void } = console;
+
+export function startTickEngine(appLogger?: typeof logger) {
+  if (appLogger) logger = appLogger;
+
   if (tickTimer) {
     clearInterval(tickTimer);
   }
 
-  console.log(
+  logger.info(
     `[tick-engine] Starting tick engine (interval: ${TICK_INTERVAL_MS / 1000}s)`
   );
 
   tickTimer = setInterval(async () => {
     try {
       const result = await processTick();
-      console.log(
+      logger.info(
         `[tick-engine] Tick processed: ${result.processed} nations`
       );
-    } catch (err) {
-      console.error("[tick-engine] Tick failed:", err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[tick-engine] Tick failed: ${message}`);
     }
   }, TICK_INTERVAL_MS);
 }
@@ -221,7 +246,7 @@ export function stopTickEngine() {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
-    console.log("[tick-engine] Tick engine stopped");
+    logger.info("[tick-engine] Tick engine stopped");
   }
 }
 
@@ -229,9 +254,13 @@ export function stopTickEngine() {
  * Register the admin tick route for manual triggering.
  */
 export async function adminTickRoute(app: FastifyInstance) {
-  app.get("/admin/tick", async (_req, reply) => {
+  app.post("/admin/tick", async (_req, reply) => {
+    const adminSecret = process.env.ADMIN_SECRET;
+    if (!adminSecret) {
+      return reply.status(500).send({ error: "ADMIN_SECRET not configured" });
+    }
     const secret = _req.headers["x-admin-secret"] as string | undefined;
-    if (secret !== (process.env.ADMIN_SECRET || "hegemon-admin-dev")) {
+    if (secret !== adminSecret) {
       return reply.status(403).send({ error: "Forbidden" });
     }
 

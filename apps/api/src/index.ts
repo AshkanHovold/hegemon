@@ -1,6 +1,7 @@
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
 import { authRoutes } from "./routes/auth.js";
 import { nationRoutes } from "./routes/nation.js";
 import { roundRoutes } from "./routes/round.js";
@@ -16,7 +17,9 @@ import { achievementRoutes } from "./routes/achievements.js";
 import { missionRoutes } from "./routes/missions.js";
 import { messageRoutes } from "./routes/messages.js";
 import { worldRoutes } from "./routes/world.js";
+import { techRoutes } from "./routes/tech.js";
 import { adminTickRoute, startTickEngine } from "./engine/tick.js";
+import { wsRoute } from "./ws.js";
 
 const port = Number(process.env.API_PORT) || 4100;
 
@@ -30,6 +33,7 @@ await app.register(cors, {
   origin: CORS_ORIGINS,
   credentials: true,
 });
+await app.register(websocket);
 
 app.get("/", async () => {
   return { name: "hegemon-api", status: "ok" };
@@ -51,7 +55,9 @@ await app.register(achievementRoutes);
 await app.register(missionRoutes);
 await app.register(messageRoutes);
 await app.register(worldRoutes);
+await app.register(techRoutes);
 await app.register(adminTickRoute);
+await app.register(wsRoute);
 
 app.listen({ port, host: "0.0.0.0" }, (err, address) => {
   if (err) {
@@ -61,5 +67,5 @@ app.listen({ port, host: "0.0.0.0" }, (err, address) => {
   app.log.info(`Hegemon API listening on ${address}`);
 
   // Start the tick engine after the server is listening
-  startTickEngine();
+  startTickEngine(app.log);
 });

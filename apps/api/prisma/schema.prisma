@@ -93,6 +93,7 @@ model Nation {
   sellOrders      MarketOrder[] @relation("seller")
 
   allianceMembership AllianceMember?
+  allianceChatMessages AllianceChat[]
 
   achievements       Achievement[]
   missions           Mission[]
@@ -107,6 +108,7 @@ model Nation {
 
   @@unique([userId, roundId])
   @@index([roundId])
+  @@index([roundId, createdAt])
 }
 
 // ─── Buildings ──────────────────────────────────────────
@@ -297,6 +299,7 @@ model Alliance {
   description String?
   treasury    Float            @default(0)
   members     AllianceMember[]
+  chatMessages AllianceChat[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -318,6 +321,18 @@ enum AllianceRole {
   MINISTER_OF_INTELLIGENCE
   MINISTER_OF_TRADE
   MEMBER
+}
+
+model AllianceChat {
+  id         String   @id @default(cuid())
+  allianceId String
+  alliance   Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
+  nationId   String
+  nation     Nation   @relation(fields: [nationId], references: [id], onDelete: Cascade)
+  message    String
+  createdAt  DateTime @default(now())
+
+  @@index([allianceId, createdAt])
 }
 
 // ─── Achievements ────────────────────────────────────────
@@ -345,6 +360,8 @@ model Mission {
   rewardMaterials Int       @default(0)
   completed       Boolean   @default(false)
   completedAt     DateTime?
+  claimed         Boolean   @default(false)
+  claimedAt       DateTime?
   createdAt       DateTime  @default(now())
 
   @@unique([nationId, type])
@@ -376,4 +393,5 @@ model Message {
   createdAt  DateTime @default(now())
 
   @@index([receiverId, read])
+  @@index([receiverId, createdAt])
 }

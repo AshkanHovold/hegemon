@@ -17,8 +17,12 @@ export async function roundRoutes(app: FastifyInstance) {
 
   // Dev bootstrap: seed a round if none exists
   app.post("/round/seed", async (_req, reply) => {
+    const adminSecret = process.env.ADMIN_SECRET;
+    if (!adminSecret) {
+      return reply.status(500).send({ error: "ADMIN_SECRET not configured" });
+    }
     const secret = _req.headers["x-admin-secret"] as string | undefined;
-    if (secret !== (process.env.ADMIN_SECRET || "hegemon-admin-dev")) {
+    if (secret !== adminSecret) {
       return reply.status(403).send({ error: "Forbidden" });
     }
 

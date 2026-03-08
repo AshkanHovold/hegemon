@@ -115,10 +115,14 @@ export async function nationRoutes(app: FastifyInstance) {
     return reply.status(201).send({ nation });
   });
 
-  // ── Dev cheat: grant resources ───────────────────────────────────────
+  // ── Dev cheat: grant resources (dev/test only) ──────────────────────
   app.post("/nation/dev/grant", async (req, reply) => {
+    const devSecret = process.env.DEV_SECRET;
+    if (!devSecret) {
+      return reply.status(404).send({ error: "Not found" });
+    }
     const secret = (req.headers["x-dev-secret"] as string) || "";
-    if (secret !== (process.env.DEV_SECRET || "hegemon-dev")) {
+    if (secret !== devSecret) {
       return reply.status(403).send({ error: "Forbidden" });
     }
 
@@ -154,10 +158,14 @@ export async function nationRoutes(app: FastifyInstance) {
     });
   });
 
-  // ── Dev cheat: complete all build/train queues instantly ─────────────
+  // ── Dev cheat: complete all build/train queues instantly (dev/test only)
   app.post("/nation/dev/complete-all", async (req, reply) => {
+    const devSecret = process.env.DEV_SECRET;
+    if (!devSecret) {
+      return reply.status(404).send({ error: "Not found" });
+    }
     const secret = (req.headers["x-dev-secret"] as string) || "";
-    if (secret !== (process.env.DEV_SECRET || "hegemon-dev")) {
+    if (secret !== devSecret) {
       return reply.status(403).send({ error: "Forbidden" });
     }
 
@@ -279,53 +287,60 @@ export async function nationRoutes(app: FastifyInstance) {
 
     const now = new Date();
 
-    // Get last login claim
-    const lastLogin = await prisma.dailyLogin.findFirst({
-      where: { nationId: nation.id },
-      orderBy: { claimedAt: "desc" },
-    });
+    // Use interactive transaction to prevent race condition (check-then-create atomicity)
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const lastLogin = await tx.dailyLogin.findFirst({
+          where: { nationId: nation.id },
+          orderBy: { claimedAt: "desc" },
+        });
 
-    // Check if already claimed today
-    if (lastLogin && isSameDay(lastLogin.claimedAt, now)) {
+        if (lastLogin && isSameDay(lastLogin.claimedAt, now)) {
+          return { alreadyClaimed: true as const };
+        }
+
+        let day = 1;
+        if (lastLogin && isYesterday(lastLogin.claimedAt, now)) {
+          day = lastLogin.day + 1;
+        }
+
+        const rewards = getRewardForDay(day);
+
+        const updateData: Record<string, unknown> = {};
+        if (rewards.cash > 0) updateData.cash = { increment: rewards.cash };
+        if (rewards.materials > 0) updateData.materials = { increment: rewards.materials };
+        if (rewards.tech > 0) updateData.techPoints = { increment: rewards.tech };
+
+        await tx.dailyLogin.create({
+          data: { nationId: nation.id, day },
+        });
+        await tx.nation.update({
+          where: { id: nation.id },
+          data: updateData,
+        });
+
+        return { alreadyClaimed: false as const, day, rewards };
+      });
+
+      if (result.alreadyClaimed) {
+        const nextClaimAt = new Date(now);
+        nextClaimAt.setUTCDate(nextClaimAt.getUTCDate() + 1);
+        nextClaimAt.setUTCHours(0, 0, 0, 0);
+        return reply.status(400).send({
+          error: "Already claimed today",
+          claimed: false,
+          nextClaimAt,
+        });
+      }
+
       const nextClaimAt = new Date(now);
       nextClaimAt.setUTCDate(nextClaimAt.getUTCDate() + 1);
       nextClaimAt.setUTCHours(0, 0, 0, 0);
-      return reply.status(400).send({
-        error: "Already claimed today",
-        claimed: false,
-        nextClaimAt,
-      });
+
+      return reply.send({ claimed: true, day: result.day, rewards: result.rewards, nextClaimAt });
+    } catch {
+      return reply.status(500).send({ error: "Failed to claim daily reward" });
     }
-
-    // Determine streak
-    let day = 1;
-    if (lastLogin && isYesterday(lastLogin.claimedAt, now)) {
-      day = lastLogin.day + 1;
-    }
-
-    const rewards = getRewardForDay(day);
-
-    // Create login record and grant rewards
-    const updateData: Record<string, unknown> = {};
-    if (rewards.cash > 0) updateData.cash = { increment: rewards.cash };
-    if (rewards.materials > 0) updateData.materials = { increment: rewards.materials };
-    if (rewards.tech > 0) updateData.techPoints = { increment: rewards.tech };
-
-    await prisma.$transaction([
-      prisma.dailyLogin.create({
-        data: { nationId: nation.id, day },
-      }),
-      prisma.nation.update({
-        where: { id: nation.id },
-        data: updateData,
-      }),
-    ]);
-
-    const nextClaimAt = new Date(now);
-    nextClaimAt.setUTCDate(nextClaimAt.getUTCDate() + 1);
-    nextClaimAt.setUTCHours(0, 0, 0, 0);
-
-    return reply.send({ claimed: true, day, rewards, nextClaimAt });
   });
 
   app.get("/nation/daily-status", async (req, reply) => {

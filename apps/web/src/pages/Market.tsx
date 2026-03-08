@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
 import { timeAgo, commodityLabel } from "../lib/format";
+import { MARKET_FEE_PERCENT } from "../lib/gameConstants";
 import GameIcon from "../components/GameIcon";
 import HelpTooltip from "../components/HelpTooltip";
 
@@ -342,7 +343,7 @@ export default function Market() {
         ))}
         <div className="ml-auto text-sm text-gray-500 flex items-center gap-2">
           <span>Market fee:</span>
-          <span className="text-amber-400 font-medium">3.5%</span>
+          <span className="text-amber-400 font-medium">{MARKET_FEE_PERCENT}%</span>
         </div>
       </div>
 
@@ -508,7 +509,7 @@ export default function Market() {
                 </div>
                 {orderSide === "BUY" && (
                   <div className="flex justify-between">
-                    <span>Fee (3.5%):</span>
+                    <span>Fee ({MARKET_FEE_PERCENT}%):</span>
                     <span className="text-gray-500">
                       $
                       {(

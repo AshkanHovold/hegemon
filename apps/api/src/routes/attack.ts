@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { TROOP_STATS, ENERGY_COSTS } from "../config/game.js";
 import type { UnitType } from "../generated/prisma/enums.js";
+import { wsManager } from "../ws.js";
 
 interface AttackBody {
   defenderId: string;
@@ -369,6 +370,20 @@ export async function attackRoutes(app: FastifyInstance) {
 
       const results = await prisma.$transaction(ops);
       const attackRecord = results[results.length - 1];
+
+      // Notify defender in real-time
+      wsManager.sendTo(defender.id, "attacked", {
+        attackerName: attacker.name,
+        attackerWon,
+        lootCash,
+        lootMaterials,
+      });
+
+      // Notify attacker to refresh (in case they have another tab)
+      wsManager.sendTo(attacker.id, "attack_resolved", {
+        defenderName: defender.name,
+        attackerWon,
+      });
 
       return reply.status(201).send({
         attack: {

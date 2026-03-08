@@ -2,8 +2,12 @@ import { FastifyInstance } from "fastify";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../db.js";
+import { requireAuth } from "../middleware/auth.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "hegemon-dev-secret-change-me";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable must be set");
+}
 const JWT_EXPIRES_IN = "7d";
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -133,88 +137,64 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // GET /auth/stats - cross-round player stats
-  app.get("/auth/stats", async (req, reply) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      return reply.status(401).send({ error: "No token provided" });
+  app.get("/auth/stats", { onRequest: requireAuth }, async (req, reply) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        username: true,
+        totalWins: true,
+        totalLosses: true,
+        roundsPlayed: true,
+        bestRank: true,
+      },
+    });
+
+    if (!user) {
+      return reply.status(401).send({ error: "User not found" });
     }
 
-    try {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as {
-        sub: string;
-      };
-      const user = await prisma.user.findUnique({
-        where: { id: payload.sub },
+    // Get current round nation stats
+    const round = await prisma.round.findFirst({ where: { active: true } });
+    let nationStats = null;
+    if (round) {
+      const nation = await prisma.nation.findUnique({
+        where: { userId_roundId: { userId: user.id, roundId: round.id } },
         select: {
           id: true,
-          username: true,
-          totalWins: true,
-          totalLosses: true,
-          roundsPlayed: true,
-          bestRank: true,
+          name: true,
+          cash: true,
+          materials: true,
+          techPoints: true,
+          population: true,
         },
       });
-
-      if (!user) {
-        return reply.status(401).send({ error: "User not found" });
+      if (nation) {
+        nationStats = nation;
       }
-
-      // Get current round nation stats
-      const round = await prisma.round.findFirst({ where: { active: true } });
-      let nationStats = null;
-      if (round) {
-        const nation = await prisma.nation.findUnique({
-          where: { userId_roundId: { userId: user.id, roundId: round.id } },
-          select: {
-            id: true,
-            name: true,
-            cash: true,
-            materials: true,
-            techPoints: true,
-            population: true,
-          },
-        });
-        if (nation) {
-          nationStats = nation;
-        }
-      }
-
-      return reply.send({
-        stats: {
-          totalWins: user.totalWins,
-          totalLosses: user.totalLosses,
-          roundsPlayed: user.roundsPlayed,
-          bestRank: user.bestRank,
-        },
-        currentNation: nationStats,
-      });
-    } catch {
-      return reply.status(401).send({ error: "Invalid token" });
     }
+
+    return reply.send({
+      stats: {
+        totalWins: user.totalWins,
+        totalLosses: user.totalLosses,
+        roundsPlayed: user.roundsPlayed,
+        bestRank: user.bestRank,
+      },
+      currentNation: nationStats,
+    });
   });
 
-  app.get("/auth/me", async (req, reply) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      return reply.status(401).send({ error: "No token provided" });
+  app.get("/auth/me", { onRequest: requireAuth }, async (req, reply) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { id: true, email: true, username: true, createdAt: true },
+    });
+
+    if (!user) {
+      return reply.status(401).send({ error: "User not found" });
     }
 
-    try {
-      const payload = jwt.verify(authHeader.slice(7), JWT_SECRET) as {
-        sub: string;
-      };
-      const user = await prisma.user.findUnique({
-        where: { id: payload.sub },
-        select: { id: true, email: true, username: true, createdAt: true },
-      });
-
-      if (!user) {
-        return reply.status(401).send({ error: "User not found" });
-      }
-
-      return reply.send({ user });
-    } catch {
-      return reply.status(401).send({ error: "Invalid token" });
-    }
+    return reply.send({ user });
   });
 }

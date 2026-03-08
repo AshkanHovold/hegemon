@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { OrderSide, Commodity, OrderStatus } from "../generated/prisma/enums.js";
+import { wsManager } from "../ws.js";
 
 const MARKET_FEE = 0.035; // 3.5% buyer fee
 
@@ -101,7 +102,7 @@ export async function marketRoutes(app: FastifyInstance) {
         }));
       };
 
-      return { bids: aggregate(bidRows), asks: aggregate(askRows) };
+      return reply.send({ bids: aggregate(bidRows), asks: aggregate(askRows) });
     }
   );
 
@@ -122,7 +123,7 @@ export async function marketRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "desc" },
     });
 
-    return {
+    return reply.send({
       orders: orders.map((o) => ({
         id: o.id,
         side: o.side,
@@ -133,7 +134,7 @@ export async function marketRoutes(app: FastifyInstance) {
         status: o.status,
         createdAt: o.createdAt,
       })),
-    };
+    });
   });
 
   // ── POST /market/orders  - Place a new order ─────────────────────────
@@ -233,6 +234,7 @@ export async function marketRoutes(app: FastifyInstance) {
       const txResult = await prisma.$transaction(async (tx) => {
         let remainingQty = quantity;
         let totalMatchedQty = 0;
+        const matchedNationIds: string[] = [];
 
         if (orderSide === OrderSide.BUY) {
           // Match against SELL orders at <= buy price, lowest ask first (price-time priority)
@@ -296,6 +298,7 @@ export async function marketRoutes(app: FastifyInstance) {
 
             remainingQty -= fillQty;
             totalMatchedQty += fillQty;
+            matchedNationIds.push(sell.nationId);
           }
         } else {
           // SELL order: match against BUY orders at >= sell price, highest bid first
@@ -357,6 +360,7 @@ export async function marketRoutes(app: FastifyInstance) {
 
             remainingQty -= fillQty;
             totalMatchedQty += fillQty;
+            matchedNationIds.push(buy.nationId);
           }
         }
 
@@ -380,10 +384,22 @@ export async function marketRoutes(app: FastifyInstance) {
           },
         });
 
-        return { updatedOrder, totalMatchedQty, remainingQty, newStatus };
+        return { updatedOrder, totalMatchedQty, remainingQty, newStatus, matchedNationIds };
       });
 
-      const { updatedOrder, totalMatchedQty, newStatus } = txResult;
+      const { updatedOrder, totalMatchedQty, matchedNationIds } = txResult;
+
+      // Notify matched counterparties in real-time
+      if (matchedNationIds.length > 0) {
+        wsManager.sendToMany(matchedNationIds, "order_filled", {
+          commodity: orderCommodity,
+        });
+        // Also notify the order placer
+        wsManager.sendTo(nation.id, "order_matched", {
+          commodity: orderCommodity,
+          matchedQty: totalMatchedQty,
+        });
+      }
 
       return reply.status(201).send({
         order: {
@@ -450,7 +466,7 @@ export async function marketRoutes(app: FastifyInstance) {
         data: { status: OrderStatus.CANCELLED },
       });
 
-      return {
+      return reply.send({
         order: {
           id: cancelled.id,
           side: cancelled.side,
@@ -461,7 +477,7 @@ export async function marketRoutes(app: FastifyInstance) {
           status: cancelled.status,
           createdAt: cancelled.createdAt,
         },
-      };
+      });
     }
   );
 
@@ -492,7 +508,7 @@ export async function marketRoutes(app: FastifyInstance) {
         take: limit,
       });
 
-      return {
+      return reply.send({
         trades: trades.map((t) => ({
           id: t.id,
           commodity: t.commodity,
@@ -502,7 +518,7 @@ export async function marketRoutes(app: FastifyInstance) {
           createdAt: t.createdAt,
           filledAt: t.filledAt,
         })),
-      };
+      });
     }
   );
 

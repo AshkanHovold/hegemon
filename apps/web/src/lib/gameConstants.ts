@@ -205,6 +205,19 @@ export const TROOP_STATS: Record<
   },
 };
 
+// Energy costs (mirrors backend config)
+export const ENERGY_COSTS = {
+  BUILD: 5,
+  TRAIN: 3,
+  ATTACK: 25,
+} as const;
+
+// Market fee percentage
+export const MARKET_FEE_PERCENT = 3.5;
+
+// Tick interval in ms (10 minutes)
+export const TICK_INTERVAL_MS = 10 * 60 * 1000;
+
 // All building types that exist in the game
 export const ALL_BUILDING_TYPES: BuildingType[] = [
   "RESIDENTIAL",

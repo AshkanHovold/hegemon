@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
-import { TROOP_STATS, ALL_UNIT_TYPES } from "../lib/gameConstants";
+import { TROOP_STATS, ALL_UNIT_TYPES, ENERGY_COSTS } from "../lib/gameConstants";
 import { useCountdown } from "../hooks/useCountdown";
 import { formatScore, timeAgo } from "../lib/format";
 import { useToast } from "../components/Toast";
@@ -542,7 +542,7 @@ export default function Military() {
               </div>
               <div className="flex justify-between mt-1">
                 <span>Energy cost:</span>
-                <span className="text-blue-400">3</span>
+                <span className="text-blue-400">{ENERGY_COSTS.TRAIN}</span>
               </div>
             </div>
 
@@ -767,7 +767,7 @@ export default function Military() {
               )}
               <div className="flex justify-between mt-1">
                 <span>Energy cost:</span>
-                <span className="text-blue-400">25 energy</span>
+                <span className="text-blue-400">{ENERGY_COSTS.ATTACK} energy</span>
               </div>
               {selectedTarget && selectedAtkPower > 0 && (
                 <div className="flex justify-between mt-1">
@@ -897,7 +897,7 @@ export default function Military() {
       <ConfirmDialog
         open={showConfirm}
         title="Confirm Attack"
-        message={`Send ${totalSelectedTroops.toLocaleString()} troops (${selectedAtkPower.toLocaleString()} ATK) against ${selectedTarget?.name ?? "target"}? This costs 25 energy.`}
+        message={`Send ${totalSelectedTroops.toLocaleString()} troops (${selectedAtkPower.toLocaleString()} ATK) against ${selectedTarget?.name ?? "target"}? This costs ${ENERGY_COSTS.ATTACK} energy.`}
         confirmLabel="Launch Attack"
         variant="danger"
         onConfirm={executeAttack}

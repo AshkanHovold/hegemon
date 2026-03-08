@@ -80,6 +80,8 @@ export async function missionRoutes(app: FastifyInstance) {
         rewardMaterials: m.rewardMaterials,
         completed: m.completed,
         completedAt: m.completedAt,
+        claimed: m.claimed,
+        claimedAt: m.claimedAt,
       };
     });
 
@@ -215,6 +217,8 @@ export async function missionRoutes(app: FastifyInstance) {
         rewardMaterials: m.rewardMaterials,
         completed: m.completed,
         completedAt: m.completedAt,
+        claimed: m.claimed,
+        claimedAt: m.claimedAt,
       };
     });
 
@@ -244,12 +248,8 @@ export async function missionRoutes(app: FastifyInstance) {
       if (!mission.completed) {
         return reply.status(400).send({ error: "Mission not yet completed" });
       }
-      if (mission.progress >= mission.target && mission.completedAt) {
-        // Check if rewards were already claimed by seeing if completedAt is very old
-        // Actually, we need a "claimed" flag. Let's use a convention: once claimed, set progress to -1
-        if (mission.progress < 0) {
-          return reply.status(400).send({ error: "Rewards already claimed" });
-        }
+      if (mission.claimed) {
+        return reply.status(400).send({ error: "Rewards already claimed" });
       }
 
       // Grant rewards
@@ -266,10 +266,9 @@ export async function missionRoutes(app: FastifyInstance) {
           where: { id: nation.id },
           data: updateData,
         }),
-        // Mark as claimed by setting progress to -1
         prisma.mission.update({
           where: { id: mission.id },
-          data: { progress: -1 },
+          data: { claimed: true, claimedAt: new Date() },
         }),
       ]);
 

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useGame } from "../context/GameContext";
 import { api, ApiError } from "../lib/api";
+import { gameWs } from "../lib/ws";
 import ConfirmDialog from "../components/ConfirmDialog";
 import HelpTooltip from "../components/HelpTooltip";
 
@@ -33,6 +34,134 @@ interface AllianceListing {
   description: string | null;
   memberCount: number;
   totalPower: number;
+}
+
+interface ChatMessage {
+  id: string;
+  nationId: string;
+  nationName: string;
+  message: string;
+  createdAt: string;
+}
+
+function AllianceChat({ nationId }: { nationId: string }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // Load initial messages
+  useEffect(() => {
+    async function load() {
+      try {
+        const data = await api.get<{ messages: ChatMessage[] }>("/alliance/chat");
+        setMessages(data.messages);
+        setTimeout(scrollToBottom, 100);
+      } catch {
+        // ignore
+      }
+    }
+    load();
+  }, [scrollToBottom]);
+
+  // Listen for real-time chat messages via WebSocket
+  useEffect(() => {
+    const unsub = gameWs.on("alliance_chat", (data: unknown) => {
+      const msg = data as ChatMessage;
+      setMessages((prev) => [...prev, msg]);
+      setTimeout(scrollToBottom, 50);
+    });
+    return unsub;
+  }, [scrollToBottom]);
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const data = await api.post<{ chat: ChatMessage }>("/alliance/chat", { message: text });
+      setMessages((prev) => [...prev, data.chat]);
+      setInput("");
+      setTimeout(scrollToBottom, 50);
+    } catch {
+      // ignore
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  return (
+    <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl flex flex-col h-[400px]">
+      <div className="px-5 py-3 border-b border-gray-800">
+        <h2 className="text-sm font-semibold text-white">Alliance Chat</h2>
+      </div>
+
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        {messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
+            No messages yet. Say hello!
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isYou = msg.nationId === nationId;
+            return (
+              <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[70%] rounded-lg px-3 py-2 ${
+                    isYou
+                      ? "bg-blue-600/20 border border-blue-500/20"
+                      : "bg-gray-800 border border-gray-700"
+                  }`}
+                >
+                  {!isYou && (
+                    <div className="text-xs text-blue-400 font-medium mb-0.5">
+                      {msg.nationName}
+                    </div>
+                  )}
+                  <div className="text-sm text-gray-200 break-words">{msg.message}</div>
+                  <div className="text-[10px] text-gray-600 mt-1">
+                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      <div className="border-t border-gray-800 p-3 flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+          maxLength={500}
+          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+        />
+        <button
+          onClick={handleSend}
+          disabled={!input.trim() || sending}
+          className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function formatRole(role: string): string {
@@ -506,31 +635,8 @@ export default function Alliance() {
           </div>
         </div>
 
-        {/* Chat placeholder */}
-        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl flex flex-col h-[400px]">
-          <div className="px-5 py-3 border-b border-gray-800">
-            <h2 className="text-sm font-semibold text-white">Alliance Chat</h2>
-          </div>
-
-          <div className="flex-1 flex items-center justify-center text-gray-600 text-sm">
-            Real-time chat coming soon (WebSocket)
-          </div>
-
-          <div className="border-t border-gray-800 p-3 flex gap-2">
-            <input
-              type="text"
-              disabled
-              placeholder="Chat coming soon..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-            />
-            <button
-              disabled
-              className="bg-blue-600/50 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-not-allowed"
-            >
-              Send
-            </button>
-          </div>
-        </div>
+        {/* Alliance Chat */}
+        <AllianceChat nationId={nation?.id ?? ""} />
       </div>
 
       {/* War room placeholder */}

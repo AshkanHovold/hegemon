@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { wsManager } from "../ws.js";
 
 interface CreateBody {
   name: string;
@@ -357,7 +358,7 @@ export async function allianceRoutes(app: FastifyInstance) {
 
     const updated = await prisma.allianceMember.update({
       where: { id: target.id },
-      data: { role: role as any },
+      data: { role: role as "VICE_PRESIDENT" | "MINISTER_OF_WAR" | "MINISTER_OF_INTELLIGENCE" | "MINISTER_OF_TRADE" | "MEMBER" },
     });
 
     return reply.send({ member: updated });
@@ -446,4 +447,114 @@ export async function allianceRoutes(app: FastifyInstance) {
 
     return reply.send({ message: "Withdrawn from alliance treasury", amount });
   });
+
+  // ── Alliance Chat ───────────────────────────────────────────────────
+
+  // GET /alliance/chat - get recent chat messages
+  app.get<{ Querystring: { before?: string; limit?: string } }>(
+    "/alliance/chat",
+    async (req, reply) => {
+      const round = await prisma.round.findFirst({ where: { active: true } });
+      if (!round) return reply.status(404).send({ error: "No active round" });
+
+      const nation = await prisma.nation.findUnique({
+        where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+        include: { allianceMembership: true },
+      });
+      if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+      if (!nation.allianceMembership) {
+        return reply.status(400).send({ error: "Not in an alliance" });
+      }
+
+      const limit = Math.min(Math.max(parseInt(req.query.limit || "50", 10) || 50, 1), 100);
+      const before = req.query.before ? new Date(req.query.before) : undefined;
+
+      const messages = await prisma.allianceChat.findMany({
+        where: {
+          allianceId: nation.allianceMembership.allianceId,
+          ...(before ? { createdAt: { lt: before } } : {}),
+        },
+        include: {
+          nation: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+
+      return reply.send({
+        messages: messages.reverse().map((m) => ({
+          id: m.id,
+          nationId: m.nationId,
+          nationName: m.nation.name,
+          message: m.message,
+          createdAt: m.createdAt,
+        })),
+      });
+    }
+  );
+
+  // POST /alliance/chat - send a chat message
+  app.post<{ Body: { message: string } }>(
+    "/alliance/chat",
+    async (req, reply) => {
+      const { message } = req.body;
+
+      if (!message || message.length < 1 || message.length > 500) {
+        return reply.status(400).send({ error: "Message must be 1-500 characters" });
+      }
+
+      const round = await prisma.round.findFirst({ where: { active: true } });
+      if (!round) return reply.status(404).send({ error: "No active round" });
+
+      const nation = await prisma.nation.findUnique({
+        where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+        include: {
+          allianceMembership: {
+            include: {
+              alliance: {
+                include: {
+                  members: { select: { nationId: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+      if (!nation.allianceMembership) {
+        return reply.status(400).send({ error: "Not in an alliance" });
+      }
+
+      const chatMsg = await prisma.allianceChat.create({
+        data: {
+          allianceId: nation.allianceMembership.allianceId,
+          nationId: nation.id,
+          message,
+        },
+      });
+
+      // Broadcast to all alliance members via WebSocket
+      const memberIds = nation.allianceMembership.alliance.members
+        .map((m) => m.nationId)
+        .filter((id) => id !== nation.id);
+
+      wsManager.sendToMany(memberIds, "alliance_chat", {
+        id: chatMsg.id,
+        nationId: nation.id,
+        nationName: nation.name,
+        message: chatMsg.message,
+        createdAt: chatMsg.createdAt,
+      });
+
+      return reply.status(201).send({
+        chat: {
+          id: chatMsg.id,
+          nationId: nation.id,
+          nationName: nation.name,
+          message: chatMsg.message,
+          createdAt: chatMsg.createdAt,
+        },
+      });
+    }
+  );
 }

@@ -115,54 +115,51 @@ export async function achievementRoutes(app: FastifyInstance) {
     const existing = new Set(nation.achievements.map((a) => a.type));
     const newlyUnlocked: string[] = [];
 
-    async function tryUnlock(type: AchievementType, condition: boolean) {
+    function tryUnlock(type: AchievementType, condition: boolean) {
       if (!existing.has(type) && condition) {
-        await prisma.achievement.create({
-          data: { nationId: nation!.id, type },
-        });
         newlyUnlocked.push(type);
       }
     }
 
     // FIRST_BUILD: any building level > 1
     const hasUpgradedBuilding = nation.buildings.some((b) => b.level > 1);
-    await tryUnlock("FIRST_BUILD", hasUpgradedBuilding);
+    tryUnlock("FIRST_BUILD", hasUpgradedBuilding);
 
     // FIRST_ARMY: total troops > initial 100
     const totalTroops = nation.troops.reduce((sum, t) => sum + t.count, 0);
-    await tryUnlock("FIRST_ARMY", totalTroops > 100);
+    tryUnlock("FIRST_ARMY", totalTroops > 100);
 
     // FIRST_BLOOD: any attack where attackerWon=true
     const wonAttack = await prisma.attack.findFirst({
       where: { attackerId: nation.id, attackerWon: true },
     });
-    await tryUnlock("FIRST_BLOOD", !!wonAttack);
+    tryUnlock("FIRST_BLOOD", !!wonAttack);
 
     // DEFENDER: any attack where you're defender and attackerWon=false
     const defendedAttack = await prisma.attack.findFirst({
       where: { defenderId: nation.id, attackerWon: false },
     });
-    await tryUnlock("DEFENDER", !!defendedAttack);
+    tryUnlock("DEFENDER", !!defendedAttack);
 
     // TYCOON: cash >= 100000
-    await tryUnlock("TYCOON", nation.cash >= 100000);
+    tryUnlock("TYCOON", nation.cash >= 100000);
 
     // INDUSTRIALIST: materials >= 50000
-    await tryUnlock("INDUSTRIALIST", nation.materials >= 50000);
+    tryUnlock("INDUSTRIALIST", nation.materials >= 50000);
 
     // ARCHITECT: 11 distinct building types
     const distinctBuildingTypes = new Set(nation.buildings.map((b) => b.type));
-    await tryUnlock("ARCHITECT", distinctBuildingTypes.size >= 11);
+    tryUnlock("ARCHITECT", distinctBuildingTypes.size >= 11);
 
     // FORTIFIED: any building level >= 20
     const hasMaxBuilding = nation.buildings.some((b) => b.level >= 20);
-    await tryUnlock("FORTIFIED", hasMaxBuilding);
+    tryUnlock("FORTIFIED", hasMaxBuilding);
 
     // WARLORD: count attacks where attackerWon=true >= 10
     const wonAttacksCount = await prisma.attack.count({
       where: { attackerId: nation.id, attackerWon: true },
     });
-    await tryUnlock("WARLORD", wonAttacksCount >= 10);
+    tryUnlock("WARLORD", wonAttacksCount >= 10);
 
     // SPY_MASTER: 8 distinct cyber op types launched
     const distinctOps = await prisma.cyberOp.findMany({
@@ -170,7 +167,7 @@ export async function achievementRoutes(app: FastifyInstance) {
       distinct: ["type"],
       select: { type: true },
     });
-    await tryUnlock("SPY_MASTER", distinctOps.length >= 8);
+    tryUnlock("SPY_MASTER", distinctOps.length >= 8);
 
     // TRADER: filled orders >= 10
     const filledOrders = await prisma.marketOrder.count({
@@ -179,10 +176,10 @@ export async function achievementRoutes(app: FastifyInstance) {
         status: "FILLED",
       },
     });
-    await tryUnlock("TRADER", filledOrders >= 10);
+    tryUnlock("TRADER", filledOrders >= 10);
 
     // ALLIANCE_FOUNDER: has alliance with role PRESIDENT
-    await tryUnlock(
+    tryUnlock(
       "ALLIANCE_FOUNDER",
       nation.allianceMembership?.role === "PRESIDENT"
     );
@@ -200,10 +197,20 @@ export async function achievementRoutes(app: FastifyInstance) {
       }))
       .sort((a, b) => b.score - a.score);
     const rank = scores.findIndex((s) => s.id === nation.id) + 1;
-    await tryUnlock("TOP_10", rank > 0 && rank <= 10);
+    tryUnlock("TOP_10", rank > 0 && rank <= 10);
 
     // MILLION: cash >= 1000000
-    await tryUnlock("MILLION", nation.cash >= 1000000);
+    tryUnlock("MILLION", nation.cash >= 1000000);
+
+    // Batch create all newly unlocked achievements
+    if (newlyUnlocked.length > 0) {
+      await prisma.achievement.createMany({
+        data: newlyUnlocked.map((type) => ({
+          nationId: nation.id,
+          type,
+        })),
+      });
+    }
 
     return reply.send({
       newlyUnlocked: newlyUnlocked.map((type) => ({

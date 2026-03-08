@@ -90,12 +90,35 @@ export interface Nation {
   // Relations
   buildings: Building[];
   troops: Troop[];
-  techNodes: unknown[];
+  techNodes: { branch: TechBranch; node: string; researching: boolean; researchAt: string | null }[];
   allianceMembership: AllianceMembership | null;
 
   shieldUntil: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Tech ───────────────────────────────────────────────
+
+export type TechBranch = "MILITARY" | "ECONOMY" | "CYBER";
+
+export interface TechNodeStatus {
+  id: string;
+  name: string;
+  desc: string;
+  tier: number;
+  costTP: number;
+  researchTimeMs: number;
+  effect: { type: string; value: number };
+  status: "locked" | "researching" | "completed";
+  researchAt: string | null;
+  level: number;
+}
+
+export interface TechBranchData {
+  key: TechBranch;
+  name: string;
+  nodes: TechNodeStatus[];
 }
 
 // ─── Rankings ─────────────────────────────────────────────

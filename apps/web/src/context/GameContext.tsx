@@ -9,6 +9,7 @@ import {
 } from "react";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "./AuthContext";
+import { gameWs } from "../lib/ws";
 import type { Nation, Round } from "../lib/types";
 
 interface GameContextType {
@@ -24,7 +25,7 @@ interface GameContextType {
 const GameContext = createContext<GameContextType | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [nation, setNation] = useState<Nation | null>(null);
   const [round, setRound] = useState<Round | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,6 +108,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  // WebSocket: connect when authenticated, auto-refresh on server events
+  useEffect(() => {
+    if (!token) {
+      gameWs.disconnect();
+      return;
+    }
+
+    gameWs.connect(token);
+
+    const unsubs = [
+      gameWs.on("tick", () => refreshNation()),
+      gameWs.on("attacked", () => refreshNation()),
+      gameWs.on("attack_resolved", () => refreshNation()),
+      gameWs.on("order_filled", () => refreshNation()),
+      gameWs.on("order_matched", () => refreshNation()),
+      gameWs.on("new_message", () => refreshNation()),
+    ];
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+      gameWs.disconnect();
+    };
+  }, [token, refreshNation]);
+
   // Smart auto-refresh: check every second if any build/train timer has elapsed
   const completedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -135,17 +160,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      for (const tech of nation.techNodes) {
+        if (tech.researching && tech.researchAt) {
+          const key = `tech-${tech.branch}-${tech.node}`;
+          if (new Date(tech.researchAt).getTime() <= now && !completedRef.current.has(key)) {
+            completedRef.current.add(key);
+            shouldRefresh = true;
+          }
+        }
+      }
+
       if (shouldRefresh) refreshNation();
     }, 1000);
     return () => clearInterval(id);
   }, [nation, refreshNation]);
 
-  // Periodic refresh every 60 seconds to stay in sync with tick engine
+  // Fallback polling every 5 minutes (WebSocket handles real-time updates)
   useEffect(() => {
     if (!user || !nation) return;
     const id = setInterval(() => {
       refreshNation();
-    }, 60_000);
+    }, 300_000);
     return () => clearInterval(id);
   }, [user, nation?.id, refreshNation]);
 
