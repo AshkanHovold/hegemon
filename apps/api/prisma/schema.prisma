@@ -75,6 +75,9 @@ model Nation {
   military    Int   @default(200)
   food        Float @default(500)
 
+  // Population allocation (0.0-1.0 = % going to military)
+  militaryAllocation Float @default(0.2)
+
   // Combat stats
   lastAttackedAt DateTime?
   shieldUntil    DateTime?

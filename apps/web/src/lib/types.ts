@@ -87,6 +87,9 @@ export interface Nation {
   military: number;
   food: number;
 
+  // Population allocation
+  militaryAllocation: number;
+
   // Relations
   buildings: Building[];
   troops: Troop[];

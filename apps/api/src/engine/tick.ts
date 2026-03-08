@@ -113,8 +113,9 @@ export async function processTick(): Promise<{ processed: number }> {
       newPopulation = Math.min(totalPopulation + popGrowth, popCap);
       const added = newPopulation - totalPopulation;
 
-      // Split growth: 80% civilian, 20% military
-      const civGrowth = Math.round(added * 0.8);
+      // Split growth based on nation's military allocation setting
+      const milRatio = nation.militaryAllocation;
+      const civGrowth = Math.round(added * (1 - milRatio));
       const milGrowth = added - civGrowth;
       newCivilians = nation.civilians + civGrowth;
       newMilitary = nation.military + milGrowth;

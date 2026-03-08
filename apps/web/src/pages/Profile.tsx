@@ -168,6 +168,45 @@ export default function Profile() {
             </p>
           </div>
 
+          {/* Population Allocation */}
+          {nation && (
+            <div className="border-t border-gray-800 pt-4">
+              <h3 className="text-xs text-gray-500 mb-3">Population Allocation</h3>
+              <p className="text-xs text-gray-600 mb-3">
+                Control how new population growth is split between civilians and military each tick.
+              </p>
+              <div className="flex items-center gap-4">
+                <div className="text-xs text-emerald-400 w-20 text-right">
+                  Civilian {Math.round((1 - (nation.militaryAllocation ?? 0.2)) * 100)}%
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round((nation.militaryAllocation ?? 0.2) * 100)}
+                  onChange={async (e) => {
+                    const val = parseInt(e.target.value, 10) / 100;
+                    try {
+                      await api.patch("/nation/allocation", { militaryAllocation: val });
+                      await refreshNation();
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className="flex-1 accent-red-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="text-xs text-red-400 w-20">
+                  Military {Math.round((nation.militaryAllocation ?? 0.2) * 100)}%
+                </div>
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-20">
+                <span>Economy focus</span>
+                <span>War footing</span>
+              </div>
+            </div>
+          )}
+
           {/* Current Round Info */}
           {round && (
             <div className="border-t border-gray-800 pt-4">

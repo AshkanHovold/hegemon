@@ -566,4 +566,43 @@ export async function nationRoutes(app: FastifyInstance) {
 
     return reply.send({ nations });
   });
+
+  // ── Population Allocation ───────────────────────────────────────────
+  app.patch<{ Body: { militaryAllocation: number } }>(
+    "/nation/allocation",
+    async (req, reply) => {
+      const { militaryAllocation } = req.body;
+
+      if (
+        typeof militaryAllocation !== "number" ||
+        militaryAllocation < 0 ||
+        militaryAllocation > 1
+      ) {
+        return reply
+          .status(400)
+          .send({ error: "militaryAllocation must be a number between 0 and 1" });
+      }
+
+      const round = await prisma.round.findFirst({ where: { active: true } });
+      if (!round) return reply.status(404).send({ error: "No active round" });
+
+      const nation = await prisma.nation.findUnique({
+        where: { userId_roundId: { userId: req.user!.id, roundId: round.id } },
+      });
+      if (!nation) return reply.status(404).send({ error: "No nation in current round" });
+
+      // Round to 2 decimal places
+      const rounded = Math.round(militaryAllocation * 100) / 100;
+
+      await prisma.nation.update({
+        where: { id: nation.id },
+        data: { militaryAllocation: rounded },
+      });
+
+      return reply.send({
+        militaryAllocation: rounded,
+        civilianAllocation: Math.round((1 - rounded) * 100) / 100,
+      });
+    }
+  );
 }
