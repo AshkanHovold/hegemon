@@ -73,6 +73,43 @@ export async function worldRoutes(app: FastifyInstance) {
       });
     }
 
+    // Recent wars declared (last 10)
+    const recentWars = await prisma.allianceWar.findMany({
+      include: {
+        aggressor: { select: { name: true, tag: true } },
+        defender: { select: { name: true, tag: true } },
+      },
+      orderBy: { declaredAt: "desc" },
+      take: 10,
+    });
+
+    for (const war of recentWars) {
+      events.push({
+        type: "WAR_DECLARED",
+        message: `[${war.aggressor.tag}] ${war.aggressor.name} declared war on [${war.defender.tag}] ${war.defender.name}!`,
+        timestamp: war.declaredAt,
+      });
+    }
+
+    // Recent NAPs formed (last 5)
+    const recentPacts = await prisma.alliancePact.findMany({
+      where: { status: "ACTIVE" },
+      include: {
+        sender: { select: { name: true, tag: true } },
+        receiver: { select: { name: true, tag: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
+    for (const pact of recentPacts) {
+      events.push({
+        type: "NAP_SIGNED",
+        message: `[${pact.sender.tag}] ${pact.sender.name} and [${pact.receiver.tag}] ${pact.receiver.name} signed a Non-Aggression Pact`,
+        timestamp: pact.createdAt,
+      });
+    }
+
     // Sort all events by timestamp descending and take top 20
     events.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     const topEvents = events.slice(0, 20);

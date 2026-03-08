@@ -141,7 +141,7 @@
 - [x] Tech tree API endpoints — full implementation with 3 branches, 12 nodes, research/cancel, tick completion
 - [x] WebSocket chat for alliances — AllianceChat model, REST endpoints, real-time WS broadcast, frontend chat UI
 - [x] NAPs and war declarations — AlliancePact/AllianceWar models, diplomacy API, NAP enforcement in attacks, Diplomacy UI panel
-- [ ] Coordinated attack bonuses
+- [x] Coordinated attack bonuses — 5% per ally attack on same target in last 30min, max 25%
 - [ ] Market cooldown / spam prevention
 - [ ] CSRF protection
 - [ ] Helmet security headers

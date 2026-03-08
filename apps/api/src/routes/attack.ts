@@ -255,7 +255,33 @@ export async function attackRoutes(app: FastifyInstance) {
 
       // Calculate attack power with unit type matchup bonuses
       const attackMatchup = calculateMatchupPower(selectedTroops, defender.troops);
-      const attackPower = attackMatchup.totalPower;
+      let attackPower = attackMatchup.totalPower;
+
+      // Coordinated attack bonus: if alliance members attacked same target in last 30 min
+      let coordinatedBonus = 0;
+      if (atkMember) {
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+        const allianceMemberIds = await prisma.allianceMember.findMany({
+          where: { allianceId: atkMember.allianceId, nationId: { not: attacker.id } },
+          select: { nationId: true },
+        });
+        const memberNationIds = allianceMemberIds.map((m) => m.nationId);
+
+        if (memberNationIds.length > 0) {
+          const recentAllyAttacks = await prisma.attack.count({
+            where: {
+              attackerId: { in: memberNationIds },
+              defenderId: defender.id,
+              createdAt: { gte: thirtyMinAgo },
+            },
+          });
+          // 5% bonus per coordinated attack, max 25%
+          coordinatedBonus = Math.min(recentAllyAttacks * 0.05, 0.25);
+          if (coordinatedBonus > 0) {
+            attackPower = Math.round(attackPower * (1 + coordinatedBonus));
+          }
+        }
+      }
 
       // Calculate defense power with matchup bonuses (defender vs attacker)
       const defenseMatchup = calculateMatchupPower(defender.troops, selectedTroops);
@@ -418,6 +444,7 @@ export async function attackRoutes(app: FastifyInstance) {
           defenderLosses,
           lootCash,
           lootMaterials,
+          coordinatedBonus: coordinatedBonus > 0 ? Math.round(coordinatedBonus * 100) : 0,
           matchups: {
             attacker: attackMatchup.matchups,
             defender: defenseMatchup.matchups,
