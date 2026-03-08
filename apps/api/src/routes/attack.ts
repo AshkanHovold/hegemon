@@ -174,6 +174,28 @@ export async function attackRoutes(app: FastifyInstance) {
         });
       }
 
+      // NAP check: if both nations are in alliances with an active pact, block
+      const [atkMember, defMember] = await Promise.all([
+        prisma.allianceMember.findUnique({ where: { nationId: attacker.id } }),
+        prisma.allianceMember.findUnique({ where: { nationId: defender.id } }),
+      ]);
+      if (atkMember && defMember && atkMember.allianceId !== defMember.allianceId) {
+        const activePact = await prisma.alliancePact.findFirst({
+          where: {
+            OR: [
+              { senderId: atkMember.allianceId, receiverId: defMember.allianceId },
+              { senderId: defMember.allianceId, receiverId: atkMember.allianceId },
+            ],
+            status: "ACTIVE",
+          },
+        });
+        if (activePact) {
+          return reply.status(400).send({
+            error: "Cannot attack — your alliances have an active Non-Aggression Pact",
+          });
+        }
+      }
+
       // Check energy
       if (attacker.energy < ENERGY_COSTS.ATTACK) {
         return reply.status(400).send({

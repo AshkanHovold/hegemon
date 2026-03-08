@@ -164,6 +164,235 @@ function AllianceChat({ nationId }: { nationId: string }) {
   );
 }
 
+interface PactData {
+  id: string;
+  sender: { id: string; name: string; tag: string };
+  receiver: { id: string; name: string; tag: string };
+  status: string;
+  isIncoming: boolean;
+  createdAt: string;
+}
+
+interface WarData {
+  id: string;
+  aggressor: { id: string; name: string; tag: string };
+  defender: { id: string; name: string; tag: string };
+  isAggressor: boolean;
+  declaredAt: string;
+}
+
+function DiplomacyPanel({ myAllianceId, myRole }: { myAllianceId: string; myRole: string }) {
+  const [pacts, setPacts] = useState<PactData[]>([]);
+  const [wars, setWars] = useState<WarData[]>([]);
+  const [alliances, setAlliances] = useState<AllianceListing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState("");
+
+  const canDiplomacy = myRole === "PRESIDENT" || myRole === "VICE_PRESIDENT";
+  const canWar = myRole === "PRESIDENT" || myRole === "MINISTER_OF_WAR";
+
+  const fetchDiplomacy = useCallback(async () => {
+    try {
+      const [dipData, allianceData] = await Promise.all([
+        api.get<{ pacts: PactData[]; wars: WarData[] }>("/diplomacy"),
+        api.get<{ alliances: AllianceListing[] }>("/alliances"),
+      ]);
+      setPacts(dipData.pacts);
+      setWars(dipData.wars);
+      setAlliances(allianceData.alliances.filter((a) => a.id !== myAllianceId));
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [myAllianceId]);
+
+  useEffect(() => {
+    fetchDiplomacy();
+  }, [fetchDiplomacy]);
+
+  // Listen for WS diplomacy events
+  useEffect(() => {
+    const unsubs = [
+      gameWs.on("pact_proposed", () => fetchDiplomacy()),
+      gameWs.on("pact_accepted", () => fetchDiplomacy()),
+      gameWs.on("war_declared", () => fetchDiplomacy()),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [fetchDiplomacy]);
+
+  async function proposePact(targetAllianceId: string) {
+    setActionError("");
+    try {
+      await api.post("/diplomacy/pact", { targetAllianceId });
+      await fetchDiplomacy();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed");
+    }
+  }
+
+  async function acceptPact(pactId: string) {
+    setActionError("");
+    try {
+      await api.post(`/diplomacy/pact/${pactId}/accept`, {});
+      await fetchDiplomacy();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed");
+    }
+  }
+
+  async function rejectPact(pactId: string) {
+    setActionError("");
+    try {
+      await api.post(`/diplomacy/pact/${pactId}/reject`, {});
+      await fetchDiplomacy();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed");
+    }
+  }
+
+  async function declareWar(targetAllianceId: string) {
+    setActionError("");
+    try {
+      await api.post("/diplomacy/war", { targetAllianceId });
+      await fetchDiplomacy();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed");
+    }
+  }
+
+  async function endWar(warId: string) {
+    setActionError("");
+    try {
+      await api.post(`/diplomacy/war/${warId}/end`, {});
+      await fetchDiplomacy();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed");
+    }
+  }
+
+  if (loading) return null;
+
+  // Alliances we don't have an active pact or war with
+  const pactedIds = new Set(pacts.filter((p) => p.status === "ACTIVE" || p.status === "PENDING")
+    .flatMap((p) => [p.sender.id, p.receiver.id]));
+  const warIds = new Set(wars.flatMap((w) => [w.aggressor.id, w.defender.id]));
+  const availableForPact = alliances.filter((a) => !pactedIds.has(a.id) && !warIds.has(a.id));
+  const availableForWar = alliances.filter((a) => !warIds.has(a.id));
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* NAPs */}
+      <div className="bg-gray-900 border border-emerald-500/20 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-emerald-400 mb-3">Non-Aggression Pacts</h2>
+
+        {actionError && (
+          <div className="text-xs text-red-400 bg-red-500/10 rounded px-3 py-2 mb-3">{actionError}</div>
+        )}
+
+        {pacts.length === 0 ? (
+          <p className="text-xs text-gray-500 mb-3">No active pacts.</p>
+        ) : (
+          <div className="space-y-2 mb-3">
+            {pacts.map((p) => {
+              const other = p.sender.id === myAllianceId ? p.receiver : p.sender;
+              return (
+                <div key={p.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                  <div>
+                    <span className="text-sm text-gray-200">{other.name}</span>
+                    <span className="text-xs text-blue-400 ml-1">[{other.tag}]</span>
+                    <span className={`text-xs ml-2 ${p.status === "ACTIVE" ? "text-emerald-400" : "text-amber-400"}`}>
+                      {p.status === "PENDING" ? (p.isIncoming ? "Incoming" : "Pending") : "Active"}
+                    </span>
+                  </div>
+                  <div className="flex gap-1">
+                    {p.status === "PENDING" && p.isIncoming && canDiplomacy && (
+                      <>
+                        <button onClick={() => acceptPact(p.id)} className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded hover:bg-emerald-500/10">Accept</button>
+                        <button onClick={() => rejectPact(p.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-500/10">Reject</button>
+                      </>
+                    )}
+                    {(p.status === "ACTIVE" || (p.status === "PENDING" && !p.isIncoming)) && canDiplomacy && (
+                      <button onClick={() => rejectPact(p.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-500/10">Cancel</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {canDiplomacy && availableForPact.length > 0 && (
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Propose NAP to:</label>
+            <div className="flex gap-2 flex-wrap">
+              {availableForPact.slice(0, 5).map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => proposePact(a.id)}
+                  className="text-xs bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded transition-colors"
+                >
+                  {a.name} [{a.tag}]
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Wars */}
+      <div className="bg-gray-900 border border-red-500/20 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-red-400 mb-3">Active Wars</h2>
+
+        {wars.length === 0 ? (
+          <p className="text-xs text-gray-500 mb-3">No active wars. Peace reigns... for now.</p>
+        ) : (
+          <div className="space-y-2 mb-3">
+            {wars.map((w) => {
+              const other = w.isAggressor ? w.defender : w.aggressor;
+              return (
+                <div key={w.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                  <div>
+                    <span className="text-xs text-gray-500">{w.isAggressor ? "War vs" : "Defending against"}</span>
+                    <span className="text-sm text-gray-200 ml-1">{other.name}</span>
+                    <span className="text-xs text-blue-400 ml-1">[{other.tag}]</span>
+                  </div>
+                  {myRole === "PRESIDENT" && (
+                    <button onClick={() => endWar(w.id)} className="text-xs text-amber-400 hover:text-amber-300 px-2 py-1 rounded hover:bg-amber-500/10">
+                      Sue for Peace
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {canWar && availableForWar.length > 0 && (
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Declare war on:</label>
+            <div className="flex gap-2 flex-wrap">
+              {availableForWar.slice(0, 5).map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => {
+                    if (confirm(`Declare war on ${a.name}? This will cancel any existing NAP.`)) {
+                      declareWar(a.id);
+                    }
+                  }}
+                  className="text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/20 px-2 py-1 rounded transition-colors"
+                >
+                  {a.name} [{a.tag}]
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatRole(role: string): string {
   switch (role) {
     case "PRESIDENT":
@@ -639,13 +868,8 @@ export default function Alliance() {
         <AllianceChat nationId={nation?.id ?? ""} />
       </div>
 
-      {/* War room placeholder */}
-      <div className="bg-gray-900 border border-red-500/20 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-red-400 mb-3">War Room</h2>
-        <p className="text-sm text-gray-500">
-          No active wars. Alliance warfare will be available in the Open phase.
-        </p>
-      </div>
+      {/* Diplomacy */}
+      <DiplomacyPanel myAllianceId={alliance.id} myRole={myRole ?? "MEMBER"} />
 
       {/* Leave confirmation dialog */}
       <ConfirmDialog

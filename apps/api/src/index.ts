@@ -18,6 +18,7 @@ import { missionRoutes } from "./routes/missions.js";
 import { messageRoutes } from "./routes/messages.js";
 import { worldRoutes } from "./routes/world.js";
 import { techRoutes } from "./routes/tech.js";
+import { diplomacyRoutes } from "./routes/diplomacy.js";
 import { adminTickRoute, startTickEngine } from "./engine/tick.js";
 import { wsRoute } from "./ws.js";
 
@@ -56,6 +57,7 @@ await app.register(missionRoutes);
 await app.register(messageRoutes);
 await app.register(worldRoutes);
 await app.register(techRoutes);
+await app.register(diplomacyRoutes);
 await app.register(adminTickRoute);
 await app.register(wsRoute);
 

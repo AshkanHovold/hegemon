@@ -303,6 +303,10 @@ model Alliance {
   treasury    Float            @default(0)
   members     AllianceMember[]
   chatMessages AllianceChat[]
+  sentPacts     AlliancePact[] @relation("pactSender")
+  receivedPacts AlliancePact[] @relation("pactReceiver")
+  sentWars      AllianceWar[]  @relation("warAggressor")
+  receivedWars  AllianceWar[]  @relation("warDefender")
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -336,6 +340,39 @@ model AllianceChat {
   createdAt  DateTime @default(now())
 
   @@index([allianceId, createdAt])
+}
+
+model AlliancePact {
+  id          String     @id @default(cuid())
+  senderId    String
+  sender      Alliance   @relation("pactSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId  String
+  receiver    Alliance   @relation("pactReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  status      PactStatus @default(PENDING)
+  expiresAt   DateTime? // null = indefinite
+  createdAt   DateTime   @default(now())
+
+  @@unique([senderId, receiverId])
+}
+
+enum PactStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model AllianceWar {
+  id           String    @id @default(cuid())
+  aggressorId  String
+  aggressor    Alliance  @relation("warAggressor", fields: [aggressorId], references: [id], onDelete: Cascade)
+  defenderId   String
+  defender     Alliance  @relation("warDefender", fields: [defenderId], references: [id], onDelete: Cascade)
+  active       Boolean   @default(true)
+  declaredAt   DateTime  @default(now())
+  endedAt      DateTime?
+
+  @@unique([aggressorId, defenderId])
 }
 
 // ─── Achievements ────────────────────────────────────────

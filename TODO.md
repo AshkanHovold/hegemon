@@ -140,7 +140,7 @@
 ### Not Yet Implemented
 - [x] Tech tree API endpoints — full implementation with 3 branches, 12 nodes, research/cancel, tick completion
 - [x] WebSocket chat for alliances — AllianceChat model, REST endpoints, real-time WS broadcast, frontend chat UI
-- [ ] NAPs and war declarations
+- [x] NAPs and war declarations — AlliancePact/AllianceWar models, diplomacy API, NAP enforcement in attacks, Diplomacy UI panel
 - [ ] Coordinated attack bonuses
 - [ ] Market cooldown / spam prevention
 - [ ] CSRF protection
@@ -149,7 +149,7 @@
 - [ ] Push notifications
 - [ ] Tutorial / onboarding flow improvements
 - [ ] Admin panel (round management, moderation)
-- [ ] Population allocation slider (civilian/military ratio)
+- [x] Population allocation slider — militaryAllocation field, PATCH endpoint, Profile page slider
 - [ ] PvE mode with AI rogue states
 - [ ] Alliance emblems / nation flags
 
